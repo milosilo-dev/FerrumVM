@@ -6,7 +6,7 @@ pub struct VCPU {
 }
 
 impl VCPU{
-    pub fn new(vm: VmFd) -> Self{
+    pub fn new(vm: &VmFd, entry: usize) -> Self{
         let vcpu = vm.create_vcpu(0).unwrap();
 
         let mut sregs = vcpu.get_sregs().unwrap();
@@ -20,7 +20,7 @@ impl VCPU{
         vcpu.set_sregs(&sregs).unwrap();
 
         let mut regs = kvm_regs::default();
-        regs.rip = 0x1000;
+        regs.rip = entry as u64;
         regs.rax = 2;
         regs.rbx = 2;
         regs.rflags = 0x2;
