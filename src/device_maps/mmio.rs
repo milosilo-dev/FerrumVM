@@ -1,11 +1,12 @@
-use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+use std::{ops::RangeInclusive, sync::{Arc, Mutex}};
 
 use crate::irq_handler::IRQHandler;
 
-pub trait MMIODevice {
+pub trait MMIODevice: Send {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;
     fn write(&mut self, addr: u64, data: &[u8]);
-    fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>);
+    fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>);
+    fn tick(&mut self);
 }
 
 pub struct MMIODeviceRegion {
@@ -33,8 +34,12 @@ impl MMIODeviceRegion {
         self.mmio_device.write(addr - *self.addr_range.start(), data);
     }
 
-    pub fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>) {
+    pub fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.mmio_device.irq_handler(irq_handler);
+    }
+
+    pub fn tick(&mut self) {
+        self.mmio_device.tick();
     }
 }
 
@@ -70,5 +75,11 @@ impl MMIODeviceMap {
             }
         }
         None
+    }
+
+    pub fn tick(&mut self) {
+        for device in &mut self.devices {
+            device.tick();
+        }
     }
 }

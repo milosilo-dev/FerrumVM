@@ -48,6 +48,7 @@ dependencies = [
  "kvm-bindings",
  "kvm-ioctls",
  "libc",
+ "vmm-sys-util",
 ]
 
 [[package]]

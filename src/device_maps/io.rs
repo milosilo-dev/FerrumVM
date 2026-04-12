@@ -1,11 +1,12 @@
-use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+use std::{ops::RangeInclusive, sync::{Arc, Mutex}};
 
 use crate::irq_handler::IRQHandler;
 
-pub trait IODevice {
+pub trait IODevice: Send {
     fn input(&mut self, port: u16, length: usize) -> Vec<u8>;
     fn output(&mut self, port: u16, data: &[u8]);
-    fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>);
+    fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>);
+    fn tick(&mut self);
 }
 
 pub struct IODeviceRegion {
@@ -40,8 +41,12 @@ impl IODeviceRegion {
         Some(())
     }
 
-    pub fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>) {
+    pub fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.io_device.irq_handler(irq_handler);
+    }
+
+    pub fn tick(&mut self) {
+        self.io_device.tick();
     }
 }
 
@@ -77,5 +82,11 @@ impl IODeviceMap {
             }
         }
         None
+    }
+
+    pub fn tick(&mut self) {
+        for dev in &mut self.devices {
+            dev.tick();
+        }
     }
 }

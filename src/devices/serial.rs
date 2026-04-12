@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::VecDeque, io::{self, Write}, rc::Rc};
+use std::{collections::VecDeque, io::{self, Write}, sync::{Arc, Mutex}};
 
 use crate::{device_maps::io::IODevice, irq_handler::{IRQCommand, IRQHandler}};
 
 pub struct Serial{
     data: VecDeque<u8>,
     new_data: bool,
-    irq_handler: Option<Rc<RefCell<IRQHandler>>>
+    irq_handler: Option<Arc<Mutex<IRQHandler>>>
 }
 
 impl Serial {
@@ -22,7 +22,7 @@ impl Serial {
         self.new_data = true;
         if self.irq_handler.is_some() {
             let irq_handler = self.irq_handler.as_mut().unwrap();
-            irq_handler.borrow_mut().trigger_irq(IRQCommand::new(4, true));
+            irq_handler.lock().unwrap().trigger_irq(IRQCommand::new(4, true));
         }
     }
 }
@@ -60,7 +60,9 @@ impl IODevice for Serial {
         }
     }
     
-    fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>) {
+    fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.irq_handler = Some(irq_handler);
     }
+    
+    fn tick(&mut self) {}
 }
