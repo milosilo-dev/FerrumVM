@@ -41,6 +41,7 @@ impl VCPU {
 
         let mut regs = kvm_regs::default();
         regs.rip = entry as u64;
+        regs.rsi = 0x10000;
         regs.rflags = 0x202;
 
         vcpu.set_regs(&regs).unwrap();

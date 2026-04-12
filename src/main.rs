@@ -12,22 +12,19 @@ fn main() {
     let com2 = Box::new(Serial::new());
     let timer = Box::new(Timer::new());
 
-    let init_mem_image = fs::read("guest/timer.bin").unwrap();
+    let init_mem_image = fs::read("guest/linuxBzImage").unwrap();
     let mut vm = VirtualMachine::new(MachineConfig {
         memory_regions: vec![MemoryRegion {
             mem_size: 64 * 1024 * 1024,
             mem_offset: 0x0000,
         }],
-        binaries: vec![Binary {
-            data: init_mem_image,
-            offset: 0x1000,
-        }],
+        binaries: Binary::load_bz_image(init_mem_image),
         io_devices: vec![
             IODeviceRegion::new(0x3f8..=0x3ff, com1),
             IODeviceRegion::new(0x2f8..=0x2ff, com2),
         ],
         mmio_devices: vec![MMIODeviceRegion::new(0xF0001000..=0xF0001008, timer)],
-        code_entry: 0x1000,
+        code_entry: 0x10000,
     });
 
     loop {

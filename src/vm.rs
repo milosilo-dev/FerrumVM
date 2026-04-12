@@ -211,10 +211,6 @@ impl VirtualMachine {
                 return Err(CrashReason::Hlt);
             }
             VcpuExit::IoOut(port, data) => {
-                if port == 0xFFFF {
-                    println!("KVM_EXIT_HLT");
-                    return Err(CrashReason::Hlt);
-                }
                 let mut io_map = self.io_map.lock().unwrap();
                 io_map.output(port, data);
             }
@@ -222,8 +218,10 @@ impl VirtualMachine {
                 let mut io_map = self.io_map.lock().unwrap();
                 let io_ret = io_map.input(port, data.len());
                 if io_ret.is_none() {
-                    println!("NO_IO_DATA_RETURNED");
-                    return Err(CrashReason::NoIODataReturned);
+                    for b in data.iter_mut() {
+                        *b = 0xFF;
+                    }
+                    return Ok(());
                 }
                 let io_ret = io_ret.unwrap();
 
@@ -241,8 +239,10 @@ impl VirtualMachine {
                 let mut mmio_map = self.mmio_map.lock().unwrap();
                 let io_ret = mmio_map.read(addr, data.len());
                 if io_ret.is_none() {
-                    println!("NO_MMIO_DATA_RETURNED");
-                    return Err(CrashReason::NoMMIODataReturned);
+                    for b in data.iter_mut() {
+                        *b = 0;
+                    }
+                    return Ok(());
                 }
                 let io_ret = io_ret.unwrap();
 
