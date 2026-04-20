@@ -3,13 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::irq_handler::IRQHandler;
+use crate::{irq_handler::IRQHandler, memory_region::GuestMemoryHandle};
 
 pub trait MMIODevice: Send {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;
     fn write(&mut self, addr: u64, data: &[u8]);
-    fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>);
-    fn tick(&mut self);
+    fn irq_handler(&mut self, _irq_handler: Arc<Mutex<IRQHandler>>) {}
+    fn pass_guest_memory(&mut self, _guest_memory: GuestMemoryHandle) {}
+    fn tick(&mut self) {}
 }
 
 pub struct MMIODeviceRegion {

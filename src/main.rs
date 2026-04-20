@@ -4,7 +4,7 @@ use skhv::{
     device_maps::io::IODeviceRegion,
     devices::{cmos::Cmos, serial::Serial, timer::Pit},
     irq_map::IrqMap,
-    machine_config::{Binary, MachineConfig, MemoryRegion},
+    machine_config::{Binary, MachineConfig, MemoryRegionConfig},
     vm::VirtualMachine,
 };
 
@@ -15,9 +15,9 @@ fn main() {
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
 
-    let init_mem_image = fs::read("guest/long_mode.bin").unwrap();
+    let init_mem_image = fs::read("guest/clock.bin").unwrap();
     let mut vm = VirtualMachine::new(MachineConfig {
-        memory_regions: vec![MemoryRegion {
+        memory_regions: vec![MemoryRegionConfig {
             mem_size: 64 * 1024 * 1024,
             mem_offset: 0x0000,
         }],

@@ -75,6 +75,4 @@ impl IODevice for Serial {
     fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.irq_handler = Some(irq_handler);
     }
-
-    fn tick(&mut self) {}
 }

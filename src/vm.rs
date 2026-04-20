@@ -9,16 +9,11 @@ use crate::{
     device_maps::{
         io::{IODeviceMap, IODeviceRegion},
         mmio::{MMIODeviceMap, MMIODeviceRegion},
-    },
-    irq_handler::IRQHandler,
-    machine_config::MachineConfig,
-    vcpu::VCPU,
+    }, irq_handler::IRQHandler, machine_config::MachineConfig, memory_region::{GuestMemoryHandle, MemoryRegion}, vcpu::VCPU
 };
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use std::{
-    ptr,
-    sync::{Arc, Mutex},
-    thread,
+    cell::RefCell, rc::Rc, sync::{Arc, Mutex}, thread
 };
 
 pub enum CrashReason {
@@ -37,11 +32,11 @@ pub struct VirtualMachine {
     vm: Arc<Mutex<VmFd>>,
     io_map: Arc<Mutex<IODeviceMap>>,
     mmio_map: Arc<Mutex<MMIODeviceMap>>,
-    memory_regions: Vec<*mut u8>,
+    memory_regions: GuestMemoryHandle,
 }
 
 impl VirtualMachine {
-    pub fn new(machine_config: MachineConfig) -> Self {
+    pub fn new(mut machine_config: MachineConfig) -> Self {
         let kvm: Kvm = Kvm::new().unwrap();
         let vm = Arc::new(Mutex::new(kvm.create_vm().unwrap()));
         let _ = vm.lock().unwrap().create_irq_chip().unwrap();
@@ -70,6 +65,7 @@ impl VirtualMachine {
         let io_map = Arc::new(Mutex::new(IODeviceMap::new()));
         let mmio_map = Arc::new(Mutex::new(MMIODeviceMap::new()));
         let irq_handler = Arc::new(Mutex::new(IRQHandler::new()));
+        let guest_memory = Rc::new(RefCell::new(vec![]));
 
         let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry);
         let mut this = Self {
@@ -77,12 +73,12 @@ impl VirtualMachine {
             vm: Arc::clone(&vm),
             io_map: Arc::clone(&io_map),
             mmio_map: Arc::clone(&mmio_map),
-            memory_regions: vec![],
+            memory_regions: guest_memory,
         };
 
         for mem in machine_config.memory_regions {
             this.new_mem(mem.mem_size, mem.mem_offset);
-            for binary in &machine_config.binaries {
+            for binary in &mut machine_config.binaries {
                 if mem.mem_offset <= binary.offset as u64
                     && mem.mem_offset + mem.mem_size as u64 > binary.offset as u64
                 {
@@ -100,16 +96,7 @@ impl VirtualMachine {
                         code_offset,
                     );
 
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            binary.data.as_ptr(),
-                            this.memory_regions
-                                .last()
-                                .expect("Can't find memory region")
-                                .add(code_offset),
-                            binary.data.len(),
-                        );
-                    }
+                    this.memory_regions.borrow().last().unwrap().write(binary.data.as_mut_slice(), code_offset);
                 }
             }
         }
@@ -167,10 +154,10 @@ impl VirtualMachine {
         }
 
         let userspace_mem = raw_ptr as *mut u8;
-        self.memory_regions.push(userspace_mem);
+        self.memory_regions.borrow_mut().push(MemoryRegion::new(userspace_mem, mem_size, mem_offset));
 
         let memory_region = kvm_userspace_memory_region {
-            slot: self.memory_regions.len() as u32 - 1,
+            slot: self.memory_regions.borrow().len() as u32 - 1,
             flags: 0,
             guest_phys_addr: mem_offset,
             memory_size: mem_size as u64,

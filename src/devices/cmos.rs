@@ -160,12 +160,4 @@ impl IODevice for Cmos {
             _ => {}
         }
     }
-
-    fn irq_handler(
-        &mut self,
-        _irq_handler: std::sync::Arc<std::sync::Mutex<crate::irq_handler::IRQHandler>>,
-    ) {
-    }
-
-    fn tick(&mut self) {}
 }

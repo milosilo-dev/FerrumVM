@@ -3,7 +3,7 @@ use crate::{
     irq_map::IrqMap,
 };
 
-pub struct MemoryRegion {
+pub struct MemoryRegionConfig {
     pub mem_size: usize,
     pub mem_offset: u64,
 }
@@ -74,7 +74,7 @@ impl Binary {
 }
 
 pub struct MachineConfig {
-    pub memory_regions: Vec<MemoryRegion>,
+    pub memory_regions: Vec<MemoryRegionConfig>,
     pub binaries: Vec<Binary>,
     pub io_devices: Vec<IODeviceRegion>,
     pub mmio_devices: Vec<MMIODeviceRegion>,

@@ -5,3 +5,4 @@ pub mod irq_map;
 pub mod machine_config;
 pub mod vcpu;
 pub mod vm;
+pub mod memory_region;
