@@ -1,4 +1,4 @@
-use std::{cell::RefCell, ptr, rc::Rc};
+use std::{ptr, sync::{Arc, Mutex}};
 
 pub struct MemoryRegion {
     ptr: *mut u8,
@@ -6,7 +6,9 @@ pub struct MemoryRegion {
     pub mem_offset: u64,
 }
 
-pub type GuestMemoryHandle = Rc<RefCell<Vec<MemoryRegion>>>;
+pub type GuestMemoryHandle = Arc<Mutex<Vec<MemoryRegion>>>;
+
+unsafe impl Send for MemoryRegion {}
 
 impl MemoryRegion {
     pub fn new(ptr: *mut u8, mem_size: usize, mem_offset: u64) -> Self{

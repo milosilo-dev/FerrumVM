@@ -21,7 +21,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u16(&self, addr: u64) -> u16{
         const LENGTH: u64 = 2;
 
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -38,7 +38,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u32(&self, addr: u64) -> u32{
         const LENGTH: u64 = 4;
 
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -55,7 +55,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u64(&self, addr: u64) -> u64{
         const LENGTH: u64 = 8;
 
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -72,7 +72,7 @@ impl VirtioGuestMemoryHandle {
     pub fn write_u16(&mut self, addr: u64, val: u16){
         const LENGTH: u64 = 2;
 
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -88,7 +88,7 @@ impl VirtioGuestMemoryHandle {
     pub fn write_u32(&mut self, addr: u64, val: u32){
         const LENGTH: u64 = 4;
 
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -102,7 +102,7 @@ impl VirtioGuestMemoryHandle {
     }
 
     pub fn write_guest_memory(&mut self, addr: u64, data: &[u8]){
-        let borrow = self.mem.borrow();
+        let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset as usize + mem_region.mem_size;

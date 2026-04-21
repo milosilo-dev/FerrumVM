@@ -14,7 +14,7 @@ fn read_u32_from_data(data: &[u8]) -> u32 {
 }
 
 pub struct MMIOTransport {
-    device: Box<dyn VirtioDevice + Sync + Send>,
+    device: Box<dyn VirtioDevice + Send>,
     queues: Vec<VirtioQueue>,
 
     queue_sel: usize,
@@ -25,7 +25,7 @@ pub struct MMIOTransport {
 }
 
 impl MMIOTransport {
-    pub fn new(device: Box<dyn VirtioDevice + Sync + Send>, queue_num: usize) -> Self{
+    pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize) -> Self{
         Self {
             device,
             queues: vec![VirtioQueue::new(); queue_num],

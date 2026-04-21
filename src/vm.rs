@@ -13,7 +13,7 @@ use crate::{
 };
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use std::{
-    cell::RefCell, rc::Rc, sync::{Arc, Mutex}, thread
+    sync::{Arc, Mutex}, thread
 };
 
 pub enum CrashReason {
@@ -65,7 +65,7 @@ impl VirtualMachine {
         let io_map = Arc::new(Mutex::new(IODeviceMap::new()));
         let mmio_map = Arc::new(Mutex::new(MMIODeviceMap::new()));
         let irq_handler = Arc::new(Mutex::new(IRQHandler::new()));
-        let guest_memory = Rc::new(RefCell::new(vec![]));
+        let guest_memory = Arc::new(Mutex::new(vec![]));
 
         let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry);
         let mut this = Self {
@@ -96,7 +96,7 @@ impl VirtualMachine {
                         code_offset,
                     );
 
-                    this.memory_regions.borrow().last().unwrap().write(binary.data.as_mut_slice(), code_offset);
+                    this.memory_regions.lock().unwrap().last().unwrap().write(binary.data.as_mut_slice(), code_offset);
                 }
             }
         }
@@ -154,10 +154,10 @@ impl VirtualMachine {
         }
 
         let userspace_mem = raw_ptr as *mut u8;
-        self.memory_regions.borrow_mut().push(MemoryRegion::new(userspace_mem, mem_size, mem_offset));
+        self.memory_regions.lock().unwrap().push(MemoryRegion::new(userspace_mem, mem_size, mem_offset));
 
         let memory_region = kvm_userspace_memory_region {
-            slot: self.memory_regions.borrow().len() as u32 - 1,
+            slot: self.memory_regions.lock().unwrap().len() as u32 - 1,
             flags: 0,
             guest_phys_addr: mem_offset,
             memory_size: mem_size as u64,
