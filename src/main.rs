@@ -3,7 +3,7 @@ use std::fs;
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
     devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
-    irq_map::IrqMap,
+    irq::map::IrqMap,
     machine_config::{Binary, MachineConfig, MemoryRegionConfig},
     vm::VirtualMachine,
 };

@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::irq_handler::IRQHandler;
+use crate::irq::handler::IRQHandler;
 
 pub trait IODevice: Send {
     fn input(&mut self, port: u16, length: usize) -> Vec<u8>;

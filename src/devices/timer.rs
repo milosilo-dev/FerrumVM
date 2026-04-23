@@ -1,6 +1,6 @@
 use crate::{
     device_maps::io::IODevice,
-    irq_handler::{IRQCommand, IRQHandler},
+    irq::handler::{IRQCommand, IRQHandler},
 };
 use std::{
     sync::{Arc, Mutex},

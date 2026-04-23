@@ -9,7 +9,7 @@ use crate::{
     device_maps::{
         io::{IODeviceMap, IODeviceRegion},
         mmio::{MMIODeviceMap, MMIODeviceRegion},
-    }, irq_handler::IRQHandler, machine_config::MachineConfig, memory_region::{GuestMemoryHandle, MemoryRegion}, vcpu::VCPU
+    }, irq::handler::IRQHandler, machine_config::MachineConfig, memory_region::{GuestMemoryHandle, MemoryRegion}, vcpu::VCPU
 };
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use std::{

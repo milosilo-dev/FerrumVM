@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{irq_handler::IRQHandler, memory_region::{GuestMemoryHandle, MemoryRegion}};
+use crate::{irq::handler::IRQHandler, memory_region::{GuestMemoryHandle, MemoryRegion}};
 
 pub trait MMIODevice: Send {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;

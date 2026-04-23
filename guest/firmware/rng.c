@@ -22,9 +22,9 @@ void virtio_rng_init(void){
     mmio_write(VIRTIO_RNG_BASE, VIRTIO_MMIO_QUEUE_NUM, QUEUE_SIZE);
 
     // Pointers to the memory holding the respective parts of the queue
-    uint32_t desc_addr  = (uint32_t)&rng_queue.desc;
-    uint32_t avail_addr = (uint32_t)&rng_queue.avail;
-    uint32_t used_addr = (uint32_t)&rng_queue.used;
+    uint32_t desc_addr  = (uint64_t)&rng_queue.desc;
+    uint32_t avail_addr = (uint64_t)&rng_queue.avail;
+    uint32_t used_addr = (uint64_t)&rng_queue.used;
 
     // Fill the locations at the pointers with the correct values
     mmio_write(VIRTIO_RNG_BASE, VIRTIO_MMIO_QUEUE_DESC_LOW,    desc_addr);

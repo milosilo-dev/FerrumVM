@@ -1,6 +1,5 @@
 use crate::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    irq_map::IrqMap,
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, irq::map::IrqMap,
 };
 
 pub struct MemoryRegionConfig {

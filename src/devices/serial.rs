@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     device_maps::io::IODevice,
-    irq_handler::{IRQCommand, IRQHandler},
+    irq::handler::{IRQCommand, IRQHandler},
 };
 
 pub struct Serial {
