@@ -6,6 +6,7 @@ const MAGIC_NUMBER: u32 = 0x74726976;
 const VERSION: u32 = 0x2;
 const VENDOR_ID: u32 = 0x56484B53;
 const IRQ_LINE: u32 = 5;
+const QUEUE_NUM_MAX: u32 = 16;
 
 fn read_u32_from_data(data: &[u8]) -> u32 {
     let mut buf = [0u8; 4];
@@ -45,7 +46,7 @@ impl MMIODevice for MMIOTransport {
             0x008 => self.device.virtio_type(),
             0x00C => VENDOR_ID,
             0x010 => self.device.features(),
-            0x034 => self.queue_sel as u32,
+            0x034 => QUEUE_NUM_MAX,
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
             0x070 => self.status,
@@ -60,9 +61,11 @@ impl MMIODevice for MMIOTransport {
             0x028 => {},
             0x030 => self.queue_sel = data[data.len() - 1] as usize,
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
-            0x044 => self.queues[self.queue_sel].ready = data[data.len() - 1] != 0,
+            0x044 => self.queues[self.queue_sel].ready = data[0] != 0,
             0x060 => {},
-            0x070 => {},
+            0x070 => {
+                self.status = read_u32_from_data(data);
+            },
             0x080 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =

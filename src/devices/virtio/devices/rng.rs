@@ -32,13 +32,16 @@ impl VirtioDevice for RngVirtio {
     }
 
     fn tick(&mut self, queue: &mut VirtioQueue) -> bool {
+        if self.guest_memory.is_none(){
+            return false;
+        }
+
         let mut guest_memory = self.guest_memory.as_mut().unwrap();
         let mut did_work = false;
 
         while let Some(head) = queue.pop_avail(&guest_memory) {
             let desc = queue.get_descriptor(&guest_memory, head);
 
-            // Ensure device can write
             if desc.flags & 2 == 0 {
                 panic!("virtio-rng got non-writable buffer");
             }

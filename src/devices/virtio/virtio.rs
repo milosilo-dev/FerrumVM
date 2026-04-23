@@ -147,7 +147,7 @@ impl VirtioQueue {
 
     pub fn pop_avail(&mut self, mem: &VirtioGuestMemoryHandle) -> Option<u16> {
         let avail_idx = mem.read_u16(self.avail_addr + 2);
-
+        
         if self.last_avail_idx == avail_idx {
             return None;
         }

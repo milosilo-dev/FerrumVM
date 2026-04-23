@@ -29,6 +29,41 @@ static inline void serial_putc(char c) {
     outb(COM1, (uint8_t)c);
 }
 
+static inline void int_to_hex(unsigned int n, char *buffer) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char temp[9];
+    int i = 0;
+
+    // Handle zero explicitly
+    if (n == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return;
+    }
+
+    // Convert digits in reverse order
+    while (n > 0) {
+        temp[i++] = hex_chars[n & 0xF];
+        n >>= 4;
+    }
+
+    // Reverse the string into the buffer
+    buffer[i] = '\0';
+    for (int j = 0; j < i; j++) {
+        buffer[j] = temp[i - 1 - j];
+    }
+}
+
+static inline void serial_putx(uint32_t x) {
+    char s[11];  // "0x" + 8 hex digits + null terminator
+    int_to_hex(x, s);
+
+    char *p = s;
+    while (*p) {
+        serial_putc(*p++);
+    }
+}
+
 static inline void serial_puts(const char *s) {
     while (*s) {
         if (*s == '\n') serial_putc('\r');  // CRLF for terminals

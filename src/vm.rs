@@ -73,7 +73,7 @@ impl VirtualMachine {
             vm: Arc::clone(&vm),
             io_map: Arc::clone(&io_map),
             mmio_map: Arc::clone(&mmio_map),
-            memory_regions: guest_memory,
+            memory_regions: Arc::clone(&guest_memory),
         };
 
         for mem in machine_config.memory_regions {
@@ -103,6 +103,7 @@ impl VirtualMachine {
 
         for mut mmio_device in machine_config.mmio_devices {
             mmio_device.irq_handler(Arc::clone(&irq_handler));
+            mmio_device.pass_guest_memory(Arc::clone(&guest_memory));
             this.register_mmio_device(mmio_device);
         }
 
