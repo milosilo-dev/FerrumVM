@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use kvm_bindings::{kvm_regs, kvm_segment};
+use kvm_bindings::{Msrs, kvm_msr_entry, kvm_regs, kvm_segment};
 use kvm_ioctls::{VcpuFd, VmFd};
 
 pub struct VCPU {
@@ -44,9 +44,19 @@ fn real_mode_data_seg(base: u64, selector: u16) -> kvm_segment {
 }
 
 impl VCPU {
-    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize) -> Self {
+    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize, cpuid: &vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>) -> Self {
         let vm_lock = vm.lock().unwrap();
         let vcpu = vm_lock.create_vcpu(0).unwrap();
+
+        let _ = vcpu.set_cpuid2(cpuid).unwrap();
+        let msrs = Msrs::from_entries(&[
+            kvm_msr_entry {
+                index: 0xC0000080,
+                data: 0,
+                ..Default::default()
+            }
+        ]).unwrap();
+        vcpu.set_msrs(&msrs).unwrap();
 
         let mut sregs = vcpu.get_sregs().unwrap();
 

@@ -39,7 +39,25 @@ impl VirtualMachine {
         let irq_handler = Arc::new(Mutex::new(IRQHandler::new()));
         let guest_memory = Arc::new(Mutex::new(vec![]));
 
-        let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry);
+        let mut cpuid = kvm.get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES).unwrap();
+        for entry in cpuid.as_mut_slice() {
+            match entry.function {
+                0x80000000 => {
+                    if entry.eax < 0x80000001 {
+                        entry.eax = 0x80000001;
+                    }
+                }
+
+                0x80000001 => {
+                    entry.edx |= 1 << 29; // Long mode
+                    entry.edx |= 1 << 20; // NX
+                }
+
+                _ => {}
+            }
+        }
+
+        let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry, &cpuid);
         let mut this = Self {
             vcpu,
             vm: Arc::clone(&vm),
