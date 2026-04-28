@@ -59,27 +59,48 @@ gdt_ptr:
 
 global enter_long_mode
 enter_long_mode:
-    ; CR3 = PML4 address (passed in as first argument on stack)
+    ; Print '1' to COM1 to confirm we entered
+    mov dx, 0x3F8
+    mov al, '1'
+    out dx, al
+
+    ; Set CR3
     mov eax, [esp + 4]
     mov cr3, eax
 
-    ; Enable PAE (bit 5 of CR4)
+    mov al, '2'
+    out dx, al
+
+    ; Enable PAE
     mov eax, cr4
     or  eax, (1 << 5)
     mov cr4, eax
 
-    ; Enable long mode in EFER MSR (MSR 0xC0000080, bit 8)
+    mov al, '3'
+    out dx, al
+
+    ; Read EFER
     mov ecx, 0xC0000080
     rdmsr
-    or  eax, (1 << 8)
+
+    mov al, '4'
+    out dx, al
+
+    ; Set long mode enable bit
+    or eax, (1 << 8)
     wrmsr
 
-    ; Enable paging (bit 31 of CR0) — this activates long mode
+    mov al, '5'
+    out dx, al
+
+    ; Enable paging
     mov eax, cr0
     or  eax, (1 << 31)
     mov cr0, eax
 
-    ; Far jump to 64-bit CS (0x18 in our new GDT) to flush pipeline
+    mov al, '6'
+    out dx, al
+
     jmp 0x18:long_mode_entry
 
 BITS 64
