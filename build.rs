@@ -1,4 +1,4 @@
-use std::{path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
 use walkdir::WalkDir;
 
 const ASM: &str = "nasm";
@@ -11,8 +11,10 @@ const FIRMWARE_PATH: &str = "guest/firmware";
 const DISK_FILE: &str = "guest/disk.bin";
 
 fn build_firmware() {
-    let asm_entry_input = FIRMWARE_PATH.to_owned() + "/entry.asm";
-    let asm_entry_output = FIRMWARE_PATH.to_owned() + "/entry.o";
+    fs::create_dir_all(FIRMWARE_PATH.to_owned() + "/build").unwrap();
+
+    let asm_entry_input = FIRMWARE_PATH.to_owned() + "/assembly/entry.asm";
+    let asm_entry_output = FIRMWARE_PATH.to_owned() + "/build/entry.o";
 
     let status = Command::new(ASM)
         .args(["-f", "elf32", asm_entry_input.as_str(), "-o", asm_entry_output.as_str()])
@@ -23,8 +25,8 @@ fn build_firmware() {
         panic!("nasm failed to assemble firmware entry stub");
     }
 
-    let asm_idt_input = FIRMWARE_PATH.to_owned() + "/idt_handlers.asm";
-    let asm_idt_output = FIRMWARE_PATH.to_owned() + "/idt_handlers.o";
+    let asm_idt_input = FIRMWARE_PATH.to_owned() + "/assembly/idt_handlers.asm";
+    let asm_idt_output = FIRMWARE_PATH.to_owned() + "/build/idt_handlers.o";
 
     let status = Command::new(ASM)
         .args(["-f", "elf64", asm_idt_input.as_str(), "-o", asm_idt_output.as_str()])
@@ -36,7 +38,7 @@ fn build_firmware() {
     }
 
     let cc_input = FIRMWARE_PATH.to_owned() + "/main.c";
-    let cc_output = FIRMWARE_PATH.to_owned() + "/main.o";
+    let cc_output = FIRMWARE_PATH.to_owned() + "/build/main.o";
 
     let status = Command::new(CC)
         .args(["-m32", "-ffreestanding", "-fno-stack-protector", "-nostdlib", "-isystem", "/usr/lib/gcc/x86_64-linux-gnu/13/include", "-O2", "-c", cc_input.as_str(), "-o", cc_output.as_str()])
@@ -48,7 +50,7 @@ fn build_firmware() {
     }
 
     let cc64_input = FIRMWARE_PATH.to_owned() + "/main64.c";
-    let cc64_output = FIRMWARE_PATH.to_owned() + "/main64.o";
+    let cc64_output = FIRMWARE_PATH.to_owned() + "/build/main64.o";
 
     let status = Command::new(CC64)
         .args([
@@ -63,8 +65,8 @@ fn build_firmware() {
     if !status.success() { panic!("gcc64 failed"); }
 
     let ld64_script  = FIRMWARE_PATH.to_owned() + "/linker64.ld";
-    let ld64_elf     = FIRMWARE_PATH.to_owned() + "/main64.elf";
-    let ld64_bin     = FIRMWARE_PATH.to_owned() + "/main64.bin";
+    let ld64_elf     = FIRMWARE_PATH.to_owned() + "/build/main64.elf";
+    let ld64_bin     = FIRMWARE_PATH.to_owned() + "/build/main64.bin";
 
     let status = Command::new("ld")
         .args([
@@ -81,7 +83,7 @@ fn build_firmware() {
         .status().expect("failed to run objcopy for main64");
     if !status.success() { panic!("objcopy main64 failed"); }
 
-    let ld_output = FIRMWARE_PATH.to_owned() + "/out.elf";
+    let ld_output = FIRMWARE_PATH.to_owned() + "/build/out.elf";
     let ld_script = FIRMWARE_PATH.to_owned() + "/linker.ld";
 
     let status = Command::new(LD)
@@ -99,7 +101,7 @@ fn build_firmware() {
         panic!("ld failed to link firmware");
     }
 
-    let obj_output = FIRMWARE_PATH.to_owned() + "/out.bin";
+    let obj_output = FIRMWARE_PATH.to_owned() + "/build/out.bin";
 
     let status = Command::new(OBJ)
         .args(["-O", "binary", ld_output.as_str(), obj_output.as_str()])

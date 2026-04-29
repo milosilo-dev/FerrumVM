@@ -1,6 +1,6 @@
-#include "serial.h"
-#include "virtio_mmio.h"
-#include "virtqueue.h"
+#include "headers/serial.h"
+#include "headers/virtio_mmio.h"
+#include "headers/virtqueue.h"
 #include <stdint.h>
 
 static Virtqueue rng_queue __attribute__((aligned(4096)));

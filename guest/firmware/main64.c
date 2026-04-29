@@ -1,6 +1,6 @@
-#include "serial.h"
+#include "headers/serial.h"
 #include "blk.c"
-#include "idt.h"
+#include "headers/idt.h"
 
 void c_main_64(void) {
     serial_puts("Long mode!\n");

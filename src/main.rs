@@ -18,8 +18,8 @@ fn main() {
     let blk = Box::new(MMIOTransport::new(Box::new(BlkVirtio::new("guest/disk.bin")), 1));
 
     let reset_vector: Vec<u8> = vec![0xEA, 0x00, 0x7E, 0x00, 0x00];
-    let firmware = fs::read("guest/firmware/out.bin").unwrap();
-    let firmware64 = fs::read("guest/firmware/main64.bin").unwrap();
+    let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
+    let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
 
     let mut vm = VirtualMachine::new(MachineConfig {
         memory_regions: vec![MemoryRegionConfig {

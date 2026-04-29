@@ -1,7 +1,7 @@
-#include "paging.h"
-#include "gdt.h"
-#include "serial.h"
-#include "longmode.h"
+#include "headers/paging.h"
+#include "headers/gdt.h"
+#include "headers/serial.h"
+#include "headers/longmode.h"
 
 #include "rng.c"
 #include "counter.c"

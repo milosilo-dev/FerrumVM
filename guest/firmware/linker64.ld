@@ -6,7 +6,7 @@ SECTIONS {
 
     .text : {
         *(.text*)
-        guest/firmware/idt_handlers.o(.text*)
+        guest/firmware/build/idt_handlers.o(.text*)
     }
     .rodata : { *(.rodata*) }
     .data   : { *(.data*)   }
