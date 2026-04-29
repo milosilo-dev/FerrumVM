@@ -3,3 +3,4 @@ guest/disk.bin
 guest/firmware/*.o
 guest/firmware/*.bin
 guest/firmware/*.elf
+guest/firmware/build
