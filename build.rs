@@ -64,7 +64,7 @@ fn build_firmware() {
         .status().expect("failed to run gcc64");
     if !status.success() { panic!("gcc64 failed"); }
 
-    let ld64_script  = FIRMWARE_PATH.to_owned() + "/linker64.ld";
+    let ld64_script  = FIRMWARE_PATH.to_owned() + "/linkerscript/linker64.ld";
     let ld64_elf     = FIRMWARE_PATH.to_owned() + "/build/main64.elf";
     let ld64_bin     = FIRMWARE_PATH.to_owned() + "/build/main64.bin";
 
@@ -84,7 +84,7 @@ fn build_firmware() {
     if !status.success() { panic!("objcopy main64 failed"); }
 
     let ld_output = FIRMWARE_PATH.to_owned() + "/build/out.elf";
-    let ld_script = FIRMWARE_PATH.to_owned() + "/linker.ld";
+    let ld_script = FIRMWARE_PATH.to_owned() + "/linkerscript/linker.ld";
 
     let status = Command::new(LD)
         .args([
