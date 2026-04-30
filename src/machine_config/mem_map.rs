@@ -1,3 +1,9 @@
+pub enum MemMapType{
+    Undefined,
+    Usable,
+    Reserved,
+}
+
 pub struct MemMap{
     pub base: u64,
     pub length: u64,

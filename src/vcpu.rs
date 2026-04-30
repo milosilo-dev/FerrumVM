@@ -53,7 +53,7 @@ impl VCPU {
         let mut sregs = vcpu.get_sregs().unwrap();
 
         sregs.cr0 = (sregs.cr0 & !0x1) | 0x20;
-        sregs.cr4 = 0;
+        sregs.cr4 = (1 << 9) | (1 << 10);
 
         sregs.cs = real_mode_code_seg(0, 0);
         sregs.ds = real_mode_data_seg(0, 0);
