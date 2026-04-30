@@ -16,6 +16,7 @@ MemMapEntry memmap[MEMMAP_MAX_ENTRIES];
 
 void init_memmap() {
     MemMapHeader* header = (MemMapHeader *)0x7000;
-    serial_puts("Mgk num: ");
+    serial_puts("mem_map: Mgk num = ");
     serial_putx(header->mgk_num);
+    serial_puts("\n");
 }

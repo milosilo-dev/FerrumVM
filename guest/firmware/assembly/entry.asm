@@ -84,10 +84,6 @@ enter_long_mode:
 
 BITS 64
 long_mode_entry:
-    mov edx, 0x3F8
-    mov al, '6'
-    out dx, al
-
     ; Reload data segments with 64-bit data selector
     mov ax, 0x20
     mov ds, ax
@@ -95,10 +91,6 @@ long_mode_entry:
     mov ss, ax
     mov fs, ax
     mov gs, ax
-
-    mov edx, 0x3F8
-    mov al, '7'
-    out dx, al
 
     ; Call 64-bit C entry — never returns
     mov rax, 0x100000   ; address of main64.bin
