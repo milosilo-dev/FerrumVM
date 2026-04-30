@@ -1,5 +1,5 @@
 use crate::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, irq::map::IrqMap, machine_config::{binary::Binary, mem_map::MemMap},
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, irq::map::IrqMap, machine_config::{binary::Binary, mem_map::{MemMap, MemMapHeader}},
 };
 
 pub struct MemoryRegionConfig {
@@ -35,14 +35,19 @@ impl MachineConfig {
 
         for mmio in &mut self.mmio_devices{
             let range = mmio.get_range();
-            mem_map.push(MemMap { 
+            mem_map.push(MemMap {
                 base: *range.start(), 
                 length: range_len(*range.start(), *range.end()) as u64, 
                 mem_type: 0 
             });
         }
         // Convert it to bytes
-        let mut memmap_bytes: Vec<u8> = vec![];
+        let mem_map_header = MemMapHeader {
+            mgk_num: 0xFE02FE02,
+            length: mem_map.len() as u32,
+        };
+
+        let mut memmap_bytes: Vec<u8> = mem_map_header.as_bytes();
         for mem_map_entry in &mut mem_map{
             let memmap_entry_bytes = mem_map_entry.as_bytes();
             memmap_bytes.extend_from_slice(&memmap_entry_bytes);
@@ -50,7 +55,7 @@ impl MachineConfig {
 
         let memmap2_entry = MemMap{
             base: 0x7000,
-            length: (mem_map.len() as u64 + 1) * 20,
+            length: (mem_map.len() as u64 + 1) * 20 + 8,
             mem_type: 0,
         };
         let memmap_entry_bytes = memmap2_entry.as_bytes();

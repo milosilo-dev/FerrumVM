@@ -16,3 +16,18 @@ impl MemMap {
         base
     } 
 }
+
+pub struct MemMapHeader{
+    pub mgk_num: u32,
+    pub length: u32
+}
+
+impl MemMapHeader {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut mgk_num = self.mgk_num.to_le_bytes().to_vec();
+        let length = self.length.to_le_bytes().to_vec();
+
+        mgk_num.extend_from_slice(&length);
+        mgk_num
+    } 
+}
