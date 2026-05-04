@@ -58,22 +58,6 @@ int load_part_table() {
         // TODO: Finsh GPT path
     } else {
         serial_puts("part-table: MBR Detected\n");
-
-        int esp_part = -1;
-
-        for (int i = 0; i < 4; i++) {
-            if (partions[i].status == 0x80) {
-                esp_part = i;
-                break;
-            }
-        }
-
-        if (esp_part == -1) {
-            serial_puts("part-table: No EFI partition, trying all partitions...\n");
-            esp_part = 0; // fallback (basic approach)
-        }
-
-        uint32_t lba = partions[esp_part].lba_start;
     }
 
     return PART_LOAD_SUCCSESS;
