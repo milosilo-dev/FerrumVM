@@ -15,7 +15,7 @@ fn main() {
     let cmos = Box::new(Cmos::new());
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
     let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1));
-    let blk = Box::new(MMIOTransport::new(Box::new(BlkVirtio::new("guest/disk.bin")), 1));
+    let blk = Box::new(MMIOTransport::new(Box::new(BlkVirtio::new("guest/image/disk.img")), 1));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();

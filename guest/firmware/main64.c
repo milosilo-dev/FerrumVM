@@ -10,7 +10,8 @@ void c_main_64(void) {
     init_memmap();
     virtio_blk_init();
 
-    load_part_table();
+    SectorRange sec_range;
+    load_part_table(&sec_range);
 
     // spin forever
     while (1) {
