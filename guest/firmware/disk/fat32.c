@@ -26,12 +26,26 @@ typedef struct {
 } __attribute__((packed)) DirEntry;
 
 typedef struct {
-    FAT32_BPB* fat;
+    uint32_t length;
+    DirEntry* first_entry;
+} __attribute__((packed)) DirList;
+
+typedef struct {
+    FAT32_BPB fat;
     SectorRange* range;
     uint32_t data_start_lba;
     uint32_t cluster;
     uint32_t cluster_size;
+
+    uint8_t  cluster_buf[32768];   // persisted cluster data
+    uint32_t current_cluster;      // which cluster is loaded
+    uint32_t entry_index; 
 } __attribute__((packed)) Fat32_Handle;
+
+uint32_t cluster_to_lba(Fat32_Handle* fs, uint32_t cluster) {
+    return fs->data_start_lba +
+           (cluster - 2) * fs->fat.sectors_per_cluster;
+}
 
 int open_fat32(SectorRange* range, Fat32_Handle* fs) {
     uint8_t bpb[512];
@@ -68,39 +82,84 @@ int open_fat32(SectorRange* range, Fat32_Handle* fs) {
     fs->cluster = cluster;
     fs->cluster_size = cluster_size;
     fs->data_start_lba = data_start_lba;
-    fs->fat = &fat;
+    fs->fat = fat;
     fs->range = range;
 
     return SUCCSESS;
 }
 
-int open_root_dir(Fat32_Handle* fs) {
-    uint8_t cluster_buf[fs->fat->sectors_per_cluster * 512];
-    uint32_t lba = fs->data_start_lba +
-           (fs->cluster - 2) * fs->fat->sectors_per_cluster;
+static int read_fat_entry(Fat32_Handle* fs, uint32_t cluster, uint32_t* next_cluster) {
+    uint32_t fat_offset    = cluster * 4;
+    uint32_t fat_sector    = fs->fat.reserved_sectors + (fat_offset / fs->fat.bytes_per_sector);
+    uint32_t entry_offset  = fat_offset % fs->fat.bytes_per_sector;
 
-    uint32_t status = virtio_blk_read(fs->range->first_sector + lba,
-        fs->fat->sectors_per_cluster * 512,
-        cluster_buf);
+    uint8_t sector_buf[512];
+    int status = virtio_blk_read(fs->range->first_sector + fat_sector, 512, sector_buf);
     if (status != 0) {
-        serial_puts("fat32: Failed to read root directory\n");
+        serial_puts("fat32: failed to read FAT sector\n");
         return IO_ERROR;
     }
 
-    serial_puts("fat32: directory contence [");
-    for (int i = 0; i < (fs->cluster_size / 32); i++) {
-        DirEntry* e = (DirEntry*)(cluster_buf + i * 32);
-
-        if (e->name[0] == 0x00)
-            break; // end
-
-        if (e->name[0] == 0xE5)
-            continue; // deleted
-
-        if (i != 0) serial_puts(" ,");
-        serial_puts(e->name);
-    }
-    serial_puts("]\n");
-
+    uint32_t val = *(uint32_t*)(sector_buf + entry_offset) & 0x0FFFFFFF;
+    *next_cluster = val;
     return SUCCSESS;
+}
+
+static int load_cluster(Fat32_Handle* fs, uint32_t cluster) {
+    uint32_t lba = cluster_to_lba(fs, cluster);
+    int status = virtio_blk_read(
+        fs->range->first_sector + lba,
+        fs->fat.sectors_per_cluster * fs->fat.bytes_per_sector,
+        fs->cluster_buf
+    );
+    if (status != 0) {
+        serial_puts("fat32: failed to read cluster\n");
+        return IO_ERROR;
+    }
+    fs->current_cluster = cluster;
+    fs->entry_index     = 0;
+    return SUCCSESS;
+}
+
+int open_root_dir(Fat32_Handle* fs) {
+    return load_cluster(fs, fs->fat.root_cluster);
+}
+
+int open_dir_entry(Fat32_Handle* fs, DirEntry* entry) {
+    // Open the directory entry as the current directory that is being edited
+}
+
+int next_dir_entry(Fat32_Handle* fs, DirEntry** out_entry) {
+    uint32_t entries_per_cluster = fs->cluster_size / sizeof(DirEntry);
+
+    while (1) {
+        while (fs->entry_index < entries_per_cluster) {
+            DirEntry* e = (DirEntry*)(fs->cluster_buf + fs->entry_index * sizeof(DirEntry));
+            fs->entry_index++;
+
+            if (e->name[0] == 0x00)
+                return END_OF_DIR;
+
+            if (e->name[0] == 0xE5)
+                continue;
+
+            if (e->attr == 0x0F)
+                continue;
+
+            *out_entry = e;
+            return SUCCSESS;
+        }
+
+        uint32_t next_cluster;
+        int status = read_fat_entry(fs, fs->current_cluster, &next_cluster);
+        if (status != 0)
+            return status;
+
+        if (next_cluster >= 0x0FFFFFF8)
+            return END_OF_DIR;
+
+        status = load_cluster(fs, next_cluster);
+        if (status != 0)
+            return status;
+    }
 }

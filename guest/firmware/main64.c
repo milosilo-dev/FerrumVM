@@ -19,8 +19,24 @@ void c_main_64(void) {
     Fat32_Handle fs;
     status = open_fat32(&sec_range, &fs);
     if (status != 0) return;
+
     status = open_root_dir(&fs);
     if (status != 0) return;
+
+    DirEntry* entry;
+    int found_efi;
+    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
+        if (memcmp(entry->name, "EFI        ", 11) == 0){
+            found_efi = 1;
+            break;
+        }
+    }
+
+    if (!found_efi) {
+        serial_puts("Did not find the EFI dir");
+        return;
+    }
+    found_efi = 0;
 
     // spin forever
     while (1) {
