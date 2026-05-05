@@ -126,7 +126,128 @@ int open_root_dir(Fat32_Handle* fs) {
 }
 
 int open_dir_entry(Fat32_Handle* fs, DirEntry* entry) {
-    // Open the directory entry as the current directory that is being edited
+    uint32_t cluster = ((uint32_t)entry->first_cluster_high << 16)
+                      | entry->first_cluster_low;
+
+    if (cluster == 0) {
+        cluster = fs->fat.root_cluster;
+    }
+
+    if (!(entry->attr & 0x10)) {
+        serial_puts("fat32: entry is not a directory\n");
+        return NOT_A_DIRECTORY;
+    }
+
+    return load_cluster(fs, cluster);
+}
+
+int read_file_offset(Fat32_Handle* fs, DirEntry* entry, uint8_t* buf, uint32_t buf_size, uint32_t read_offset) {
+        if (entry->attr & 0x10) {
+        serial_puts("fat32: entry is a directory, not a file\n");
+        return NOT_A_FILE;
+    }
+
+    uint32_t cluster = ((uint32_t)entry->first_cluster_high << 16)
+                      | entry->first_cluster_low;
+    cluster += read_offset;
+    uint32_t remaining = entry->file_size;
+    uint32_t offset = 0;
+
+    if (remaining > buf_size) {
+        // serial_puts("fat32: buffer too small for file\n");
+        // return BUFFER_TOO_SMALL;
+        remaining = buf_size;
+    }
+
+    while (remaining > 0) {
+        uint32_t lba = cluster_to_lba(fs, cluster);
+        uint32_t to_read = remaining < fs->cluster_size ? remaining : fs->cluster_size;
+
+        int status = virtio_blk_read(
+            fs->range->first_sector + lba,
+            // virtio reads in full sectors, round up to nearest 512
+            (to_read + 511) & ~511,
+            buf + offset
+        );
+        if (status != 0) {
+            serial_puts("fat32: failed to read file cluster\n");
+            return IO_ERROR;
+        }
+
+        offset    += to_read;
+        remaining -= to_read;
+
+        if (remaining == 0) break;
+
+        uint32_t next_cluster;
+        status = read_fat_entry(fs, cluster, &next_cluster);
+        if (status != 0)
+            return status;
+
+        if (next_cluster >= 0x0FFFFFF8) {
+            // end of chain but remaining > 0 — corrupted FAT
+            serial_puts("fat32: unexpected end of cluster chain\n");
+            return IO_ERROR;
+        }
+
+        cluster = next_cluster;
+    }
+
+    return SUCCSESS;
+}
+
+int read_file(Fat32_Handle* fs, DirEntry* entry, uint8_t* buf, uint32_t buf_size) {
+    if (entry->attr & 0x10) {
+        serial_puts("fat32: entry is a directory, not a file\n");
+        return NOT_A_FILE;
+    }
+
+    uint32_t cluster = ((uint32_t)entry->first_cluster_high << 16)
+                      | entry->first_cluster_low;
+    uint32_t remaining = entry->file_size;
+    uint32_t offset = 0;
+
+    if (remaining > buf_size) {
+        // serial_puts("fat32: buffer too small for file\n");
+        // return BUFFER_TOO_SMALL;
+        remaining = buf_size;
+    }
+
+    while (remaining > 0) {
+        uint32_t lba = cluster_to_lba(fs, cluster);
+        uint32_t to_read = remaining < fs->cluster_size ? remaining : fs->cluster_size;
+
+        int status = virtio_blk_read(
+            fs->range->first_sector + lba,
+            // virtio reads in full sectors, round up to nearest 512
+            (to_read + 511) & ~511,
+            buf + offset
+        );
+        if (status != 0) {
+            serial_puts("fat32: failed to read file cluster\n");
+            return IO_ERROR;
+        }
+
+        offset    += to_read;
+        remaining -= to_read;
+
+        if (remaining == 0) break;
+
+        uint32_t next_cluster;
+        status = read_fat_entry(fs, cluster, &next_cluster);
+        if (status != 0)
+            return status;
+
+        if (next_cluster >= 0x0FFFFFF8) {
+            // end of chain but remaining > 0 — corrupted FAT
+            serial_puts("fat32: unexpected end of cluster chain\n");
+            return IO_ERROR;
+        }
+
+        cluster = next_cluster;
+    }
+
+    return SUCCSESS;
 }
 
 int next_dir_entry(Fat32_Handle* fs, DirEntry** out_entry) {

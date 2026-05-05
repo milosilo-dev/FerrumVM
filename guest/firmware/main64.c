@@ -24,7 +24,7 @@ void c_main_64(void) {
     if (status != 0) return;
 
     DirEntry* entry;
-    int found_efi;
+    int found_efi = 0;
     while (next_dir_entry(&fs, &entry) == SUCCSESS) {
         if (memcmp(entry->name, "EFI        ", 11) == 0){
             found_efi = 1;
@@ -36,7 +36,40 @@ void c_main_64(void) {
         serial_puts("Did not find the EFI dir");
         return;
     }
-    found_efi = 0;
+
+    open_dir_entry(&fs, entry);
+    int found_boot = 0;
+    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
+        if (memcmp(entry->name, "BOOT       ", 11) == 0){
+            found_boot = 1;
+            break;
+        }
+    }
+
+    if (!found_boot) {
+        serial_puts("Did not find the Boot dir");
+        return;
+    }
+
+    open_dir_entry(&fs, entry);
+    int found_exe = 0;
+    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
+        if (memcmp(entry->name, "BOOTX64 EFI ", 11) == 0){
+            found_exe = 1;
+            break;
+        }
+    }
+
+    if (!found_exe) {
+        serial_puts("Did not find the BOOTX64 binary");
+        return;
+    }
+
+    uint8_t file_buf[4096];
+    read_file(&fs, entry, file_buf, sizeof(file_buf));
+    for (int i = 0; i < 10; i++) {
+        serial_putx(file_buf[i]);
+    }
 
     // spin forever
     while (1) {
