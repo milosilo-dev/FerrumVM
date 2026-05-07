@@ -27,5 +27,8 @@ void format_pe(uint8_t* exe) {
         (uint8_t *)exe + ep_rva
     );
 
-    entry((void*)(0), (void*)(0));
+    EFI_TABLE_HEADER* table_header = (EFI_TABLE_HEADER*)malloc(sizeof(EFI_TABLE_HEADER));
+    EFI_SYSTEM_TABLE* system_table = (EFI_SYSTEM_TABLE*)malloc(sizeof(EFI_SYSTEM_TABLE));
+
+    entry(system_table, table_header);
 }

@@ -2,12 +2,12 @@
 #include "virtio/blk.c"
 #include "headers/idt.h"
 #include "headers/sector_range.h"
+#include "mem/heap.c"
 #include "disk/esp.c"
 #include "disk/fat32.c"
 #include "disk/format_PE.c"
 #include "mem/stack.c"
 #include "mem/memmap.c"
-#include "mem/heap.c"
 
 void c_main_64(void) {
     serial_puts("=-- Long mode --=\n");
