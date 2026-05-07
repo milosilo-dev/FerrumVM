@@ -11,5 +11,5 @@ void print_stack_usage() {
     uint32_t used = 0x400000 - sp;
     serial_puts("stack: ");
     serial_putx(used);
-    serial_puts(" Bytes used");
+    serial_puts(" Bytes used\n");
 }

@@ -4,6 +4,7 @@
 #include "headers/sector_range.h"
 #include "disk/esp.c"
 #include "disk/fat32.c"
+#include "disk/format_PE.c"
 #include "mem/stack.c"
 #include "mem/memmap.c"
 #include "mem/heap.c"
@@ -68,7 +69,8 @@ void c_main_64(void) {
         return;
     }
 
-    static uint8_t file_buf[4096];
+    uint8_t* file_buf = malloc(entry->file_size);
+
     read_file(&fs, entry, file_buf, sizeof(file_buf));
     for (int i = 0; i < 10; i++) {
         serial_putx(file_buf[i]);
@@ -76,6 +78,8 @@ void c_main_64(void) {
     serial_puts("\n");
 
     print_stack_usage();
+
+    format_pe(file_buf);
 
     // spin forever
     while (1) {
