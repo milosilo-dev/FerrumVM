@@ -1,5 +1,6 @@
 #include "../headers/pe_exe.h"
-#include "../headers/uefi.h"
+#include "../headers/uefi/uefi.h"
+#include "../uefi.c"
 
 void format_pe(uint8_t* exe) {
     EFI_IMAGE_DOS_HEADER* dos_header = (EFI_IMAGE_DOS_HEADER*)exe;
@@ -27,8 +28,9 @@ void format_pe(uint8_t* exe) {
         (uint8_t *)exe + ep_rva
     );
 
-    EFI_TABLE_HEADER* table_header = (EFI_TABLE_HEADER*)malloc(sizeof(EFI_TABLE_HEADER));
+    EFI_HANDLE image_handle = exe;
     EFI_SYSTEM_TABLE* system_table = (EFI_SYSTEM_TABLE*)malloc(sizeof(EFI_SYSTEM_TABLE));
+    format_system_table(system_table);
 
-    entry(system_table, table_header);
+    entry(image_handle, system_table);
 }

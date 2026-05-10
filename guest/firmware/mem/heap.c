@@ -1,3 +1,4 @@
+#pragma once
 #include <stdint.h>
 
 static uint8_t* heap_ptr;
@@ -20,4 +21,12 @@ void* malloc(uint64_t size) {
     void* ptr = heap_ptr;
     heap_ptr += size;
     return ptr;
+}
+
+int memcpy(void* dst, void* src, uint64_t len){
+    return 0;
+}
+
+int memset(void* buf, uint8_t val, uint64_t size){
+   return 0;
 }
