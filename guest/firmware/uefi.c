@@ -1,5 +1,6 @@
 #include "headers/uefi/uefi.h"
 #include "headers/uefi/crc32.h"
+#include "headers/uefi/config_table.h"
 #include "mem/heap.c"
 
 #define STUB(name, ret) \
@@ -174,7 +175,17 @@ static EFI_RUNTIME_SERVICES gRuntimeServices = {
     // all NULL for now — Limine doesn't call runtime services before ExitBootServices
 };
 
+static EFI_CONFIGURATION_TABLE gConfigTable[2];
+
 // ── system table ──────────────────────────────────────────────────
+
+void format_config_table() {
+    gConfigTables[0].VendorGuid = (EFI_GUID)ACPI_20_TABLE_GUID;
+    gConfigTables[0].VendorTable = rsdp_address;
+
+    config_tables[1].VendorGuid = (EFI_GUID)ACPI_TABLE_GUID;
+    config_tables[1].VendorTable = rsdp_address;
+}
 
 static uint16_t gFirmwareVendor[] = { 'F','e','r','r','u','m', 0 };
 
