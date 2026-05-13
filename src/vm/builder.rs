@@ -86,7 +86,11 @@ impl VirtualMachine {
                         code_offset,
                     );
 
-                    this.memory_regions.lock().unwrap().last().unwrap().write(binary.data.as_mut_slice(), code_offset);
+                    this.memory_regions.lock()
+                        .unwrap()
+                        .last()
+                        .unwrap()
+                        .write(binary.data.as_mut_slice(), code_offset);
                 }
             }
         }

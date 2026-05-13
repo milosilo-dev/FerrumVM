@@ -2,16 +2,28 @@ use std::{fs, path::Path, process::Command};
 use walkdir::WalkDir;
 
 const ASM: &str = "nasm";
+const ASL: &str = "iasl";
 const CC: &str = "i686-elf-gcc";
 const CC64: &str = "x86_64-linux-gnu-gcc";
 const LD: &str = "ld";
 const OBJ: &str = "objcopy";
 
 const FIRMWARE_PATH: &str = "guest/firmware";
+const ACPI_PATH: &str = "acpi";
 const DISK_FILE: &str = "guest/disk.bin";
 
 fn build_firmware() {
     fs::create_dir_all(FIRMWARE_PATH.to_owned() + "/build").unwrap();
+
+    let acpi_input = ACPI_PATH.to_owned() + "/DSDT.dsl";
+    let status = Command::new(ASL)
+        .args(["-tc", acpi_input.as_str()])
+        .status()
+        .expect("failed to run nasm");
+
+    if !status.success() {
+        panic!("iasl failed to compile the DSDT");
+    }
 
     let asm_entry_input = FIRMWARE_PATH.to_owned() + "/assembly/entry.asm";
     let asm_entry_output = FIRMWARE_PATH.to_owned() + "/build/entry.o";

@@ -44,6 +44,7 @@ fn main() {
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0,  // CPU starts executing here
     };
+    machine_config.inject_acpi_tables();
     machine_config.inject_memmap(None);
 
     let mut vm = VirtualMachine::new(machine_config);
