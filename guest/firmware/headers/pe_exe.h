@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#define offsetof(type, member) ((uint32_t)&(((type*)0)->member))
 
 typedef struct {
   uint16_t    e_magic;
@@ -31,7 +32,7 @@ typedef struct {
 #define IMAGE_SUBSYSTEM_EFI_APPLICATION 10
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint16_t Machine;
     uint16_t NumberOfSections;
     uint32_t TimeDateStamp;
@@ -41,42 +42,58 @@ typedef struct {
     uint16_t Characteristics;
 } IMAGE_FILE_HEADER;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint32_t VirtualAddress;
     uint32_t Size;
 } IMAGE_DATA_DIRECTORY;
 
-typedef struct {
-    uint16_t Magic;                         // 0x020B
+typedef struct __attribute__((packed)) {
+    uint16_t Magic;
+
     uint8_t  MajorLinkerVersion;
     uint8_t  MinorLinkerVersion;
+
     uint32_t SizeOfCode;
     uint32_t SizeOfInitializedData;
     uint32_t SizeOfUninitializedData;
+
     uint32_t AddressOfEntryPoint;
     uint32_t BaseOfCode;
+
     uint64_t ImageBase;
+
     uint32_t SectionAlignment;
     uint32_t FileAlignment;
+
     uint16_t MajorOperatingSystemVersion;
     uint16_t MinorOperatingSystemVersion;
+
     uint16_t MajorImageVersion;
     uint16_t MinorImageVersion;
+
     uint16_t MajorSubsystemVersion;
     uint16_t MinorSubsystemVersion;
+
     uint32_t Win32VersionValue;
+
     uint32_t SizeOfImage;
     uint32_t SizeOfHeaders;
+
     uint32_t CheckSum;
+
     uint16_t Subsystem;
     uint16_t DllCharacteristics;
+
     uint64_t SizeOfStackReserve;
     uint64_t SizeOfStackCommit;
+
     uint64_t SizeOfHeapReserve;
     uint64_t SizeOfHeapCommit;
+
     uint32_t LoaderFlags;
     uint32_t NumberOfRvaAndSizes;
-    IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+
+    IMAGE_DATA_DIRECTORY DataDirectory[16];
 } IMAGE_OPTIONAL_HEADER64;
 
 typedef struct {
@@ -102,3 +119,19 @@ typedef struct {
     uint16_t NumberOfLinenumbers;
     uint32_t Characteristics;
 } IMAGE_SECTION_HEADER;
+
+static inline IMAGE_DATA_DIRECTORY* get_dir(
+    IMAGE_OPTIONAL_HEADER64* opt,
+    uint16_t index,
+    uint16_t size_of_optional
+) {
+    uint8_t* base = (uint8_t*)opt;
+
+    uint32_t offset = offsetof(IMAGE_OPTIONAL_HEADER64, DataDirectory);
+    uint32_t required = offset + (index + 1) * sizeof(IMAGE_DATA_DIRECTORY);
+
+    if (required > size_of_optional)
+        return (void*)0;
+
+    return &opt->DataDirectory[index];
+}
