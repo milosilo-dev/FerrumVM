@@ -20,10 +20,12 @@ typedef struct {
 } __attribute__((packed)) TSS;
 
 static TSS tss;
-static uint8_t double_fault_stack[4096]; // known-good stack
+static uint8_t kernel_stack[4096];
+static uint8_t double_fault_stack[4096];
 
 void tss_init() {
     memset(&tss, 0, sizeof(TSS));
+    tss.rsp0 = (uint64_t)kernel_stack + sizeof(kernel_stack);
     tss.ist1 = (uint64_t)double_fault_stack + sizeof(double_fault_stack);
     tss.iopb_offset = sizeof(TSS);
 }

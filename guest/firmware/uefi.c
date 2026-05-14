@@ -1,10 +1,12 @@
 #include "headers/uefi/uefi.h"
 #include "headers/uefi/crc32.h"
 #include "headers/uefi/config_table.h"
+#include "headers/uefi/stip.h"
 #include "mem/heap.c"
 
 #define STUB(name, ret) \
-    static EFI_STATUS EFIAPI stub_##name(...) { \
+    static EFI_STATUS EFIAPI stub_##name( \
+        void* a, void* b, void* c, void* d) { \
         serial_puts("[STUB] " #name "\n"); \
         return ret; \
     }
@@ -20,6 +22,7 @@ static EFI_STATUS EFIAPI efi_output_string(
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This,
     uint16_t *String
 ) {
+    serial_puts("[STUB] STOP");
     while (*String) {
         char c = (char)(*String & 0xFF);
         if (c == '\n') serial_putc('\r');
@@ -29,11 +32,34 @@ static EFI_STATUS EFIAPI efi_output_string(
     return EFI_SUCCESS;
 }
 
+static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
+    serial_puts("[STUB] Stall us=");
+    serial_putx(microseconds);
+    // print return address so you know who's calling
+    uint64_t ra;
+    __asm__("mov 8(%%rbp), %0" : "=r"(ra));
+    serial_puts(" caller=");
+    serial_putx(ra);
+    serial_puts("\n");
+    return EFI_SUCCESS;
+}
+
 STUB(ConReset,        EFI_SUCCESS)
 STUB(QueryMode,       EFI_SUCCESS)
 STUB(SetMode,         EFI_SUCCESS)
 STUB(SetAttribute,    EFI_SUCCESS)
 STUB(ClearScreen,     EFI_SUCCESS)
+STUB(SetCursorPosition,     EFI_SUCCESS)
+STUB(EnableCursor,     EFI_SUCCESS)
+
+static SIMPLE_TEXT_OUTPUT_MODE gConOutMode = {
+    .MaxMode       = 1,
+    .Mode          = 0,
+    .Attribute     = 0,
+    .CursorColumn  = 0,
+    .CursorRow     = 0,
+    .CursorVisible = 1,
+};
 
 static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
     .Reset        = (void*)stub_ConReset,
@@ -42,6 +68,9 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
     .SetMode      = (void*)stub_SetMode,
     .SetAttribute = (void*)stub_SetAttribute,
     .ClearScreen  = (void*)stub_ClearScreen,
+    .SetCursorPosition  = (void*)stub_SetCursorPosition,
+    .EnableCursor       = (void*)stub_EnableCursor,
+    .Mode               = &gConOutMode,
 };
 
 // Heap mem
@@ -51,11 +80,29 @@ static EFI_STATUS EFIAPI efi_AllocatePool(
     UINTN size,
     VOID **out
 ) {
+    serial_puts("AllocatePool type=");
+    serial_putx(type);
+    serial_puts(" size=");
+    serial_putx(size);
+    serial_puts(" allocate pool out arg=");
+    serial_putx((uint32_t)*out);
+    serial_puts("\n");
+
     void* ptr = malloc(size);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
     memset(ptr, 0, size);
-    serial_puts("allocate pool");
+    uint64_t ra;
+    __asm__("mov 8(%%rbp), %0" : "=r"(ra));
     *out = ptr;
+
+    uint64_t rsp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    uint64_t retaddr = *(uint64_t*)rsp;
+
+    serial_puts("AllocatePool result=");
+    serial_putx((uint64_t)ptr);
+    serial_puts("\n");
+
     return EFI_SUCCESS;
 }
 
@@ -65,12 +112,37 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     UINTN pages,
     EFI_PHYSICAL_ADDRESS *memory
 ) {
+    serial_puts("AllocatePages type=");
+    serial_putx(type);
+    serial_puts(" memory_type=");
+    serial_putx(memory_type);
+    serial_puts(" pages=");
+    serial_putx(pages);
+    serial_puts(" requested_addr=");
+    serial_putx(*memory);
+    serial_puts("\n");
+
     void* ptr = malloc(pages * 4096);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
     memset(ptr, 0, pages * 4096);
-    serial_puts("allocate pages");
+
+    serial_puts("AllocatePages result=");
+    serial_putx((uint64_t)ptr);
+    serial_puts("\n");
+
     *memory = (EFI_PHYSICAL_ADDRESS)ptr;
     return EFI_SUCCESS;
+}
+
+static EFI_STATUS EFIAPI efi_LocateProtocol(
+    EFI_GUID *guid, VOID *reg, VOID **iface
+) {
+    serial_puts("[STUB] LocateProtocol {");
+    serial_putx(guid->Data1); serial_puts("-");
+    serial_putx(guid->Data2); serial_puts("-");
+    serial_putx(guid->Data3); serial_puts("}\n");
+    *iface = NULL;
+    return EFI_NOT_FOUND;
 }
 
 // ── boot service stubs ────────────────────────────────────────────
@@ -80,7 +152,6 @@ STUB(RestoreTPL,                    EFI_SUCCESS)
 STUB(FreePages,                     EFI_SUCCESS)
 STUB(GetMemoryMap,                  EFI_BUFFER_TOO_SMALL)
 STUB(FreePool,                      EFI_SUCCESS)
-STUB(Stall,                         EFI_SUCCESS)
 STUB(CreateEvent,                   EFI_SUCCESS)
 STUB(SetTimer,                      EFI_SUCCESS)
 STUB(WaitForEvent,                  EFI_SUCCESS)
@@ -108,7 +179,6 @@ STUB(CloseProtocol,                 EFI_SUCCESS)
 STUB(OpenProtocolInformation,       EFI_SUCCESS)
 STUB(ProtocolsPerHandle,            EFI_SUCCESS)
 STUB(LocateHandleBuffer,            EFI_NOT_FOUND)
-STUB(LocateProtocol,                EFI_NOT_FOUND)
 STUB(InstallMultipleProtocolInterfaces,   EFI_SUCCESS)
 STUB(UninstallMultipleProtocolInterfaces, EFI_SUCCESS)
 STUB(CalculateCrc32,                EFI_SUCCESS)
@@ -119,6 +189,19 @@ static VOID EFIAPI stub_SetMem(VOID *buf, UINTN size, UINT8 val) { memset(buf, v
 static EFI_STATUS EFIAPI stub_Exit(EFI_HANDLE img, EFI_STATUS status, UINTN size, CHAR16 *data) {
     serial_puts("[STUB] Exit — halting\n");
     for (;;) __asm__("hlt");
+}
+
+static EFI_STATUS EFIAPI efi_LocateHandleBuffer(
+    EFI_LOCATE_SEARCH_TYPE type,
+    EFI_GUID *guid,
+    VOID *key,
+    UINTN *count,
+    EFI_HANDLE **buf
+) {
+    serial_puts("[STUB] LocateHandleBuffer\n");
+    if (count) *count = 0;
+    if (buf)   *buf   = NULL;
+    return EFI_NOT_FOUND;
 }
 
 // ── boot services table ───────────────────────────────────────────
@@ -167,8 +250,8 @@ static EFI_BOOT_SERVICES gBootServices = {
     .CloseProtocol                      = (void*)stub_CloseProtocol,
     .OpenProtocolInformation            = (void*)stub_OpenProtocolInformation,
     .ProtocolsPerHandle                 = (void*)stub_ProtocolsPerHandle,
-    .LocateHandleBuffer                 = (void*)stub_LocateHandleBuffer,
-    .LocateProtocol                     = (void*)stub_LocateProtocol,
+    .LocateHandleBuffer                 = (void*)efi_LocateHandleBuffer,
+    .LocateProtocol                     = (void*)efi_LocateProtocol,
     .InstallMultipleProtocolInterfaces  = (void*)stub_InstallMultipleProtocolInterfaces,
     .UninstallMultipleProtocolInterfaces= (void*)stub_UninstallMultipleProtocolInterfaces,
     .CalculateCrc32                     = (void*)stub_CalculateCrc32,
@@ -232,6 +315,22 @@ void format_config_table() {
 
 static uint16_t gFirmwareVendor[] = { 'F','e','r','r','u','m', 0 };
 
+void patch_null_stubs(void) {
+    void** tbl = (void**)&gBootServices;
+    // skip the header (40 bytes = 5 pointers)
+    for (int i = 5; i < sizeof(EFI_BOOT_SERVICES)/8; i++) {
+        if (tbl[i] == NULL)
+            tbl[i] = stub_Null;
+    }
+
+    tbl = (void**)&gRuntimeServices;
+    // skip the header (40 bytes = 5 pointers)
+    for (int i = 5; i < sizeof(EFI_RUNTIME_SERVICES)/8; i++) {
+        if (tbl[i] == NULL)
+            tbl[i] = stub_Null;
+    }
+}
+
 void format_system_table(EFI_SYSTEM_TABLE *st) {
     st->Hdr.Signature  = EFI_SYSTEM_TABLE_SIGNATURE;
     st->Hdr.Revision   = (2 << 16) | 70;
@@ -242,12 +341,12 @@ void format_system_table(EFI_SYSTEM_TABLE *st) {
     st->FirmwareVendor   = gFirmwareVendor;
     st->FirmwareRevision = 1;
 
-    st->ConsoleInHandle     = NULL;
-    st->ConIn               = NULL;
-    st->ConsoleOutHandle    = NULL;
+    st->ConsoleInHandle     = (EFI_HANDLE)1;
+    st->ConIn               = &gConIn;
+    st->ConsoleOutHandle    = (EFI_HANDLE)2;
     st->ConOut              = &gConOut;
-    st->StandardErrorHandle = NULL;
-    st->StdErr              = NULL;
+    st->StandardErrorHandle = (EFI_HANDLE)3;
+    st->StdErr              = &gConOut;
 
     gBootServices.Hdr.CRC32 = crc32((uint8_t*)&gBootServices, 
             gBootServices.Hdr.HeaderSize);

@@ -137,6 +137,7 @@ void format_pe(uint8_t* exe) {
     EFI_SYSTEM_TABLE* system_table = malloc(sizeof(EFI_SYSTEM_TABLE));
     memset(system_table, 0, sizeof(EFI_SYSTEM_TABLE));
     format_system_table(system_table);
+    patch_null_stubs();
 
     EFI_IMAGE_HANDLE_DATA* handle_data = malloc(sizeof(EFI_IMAGE_HANDLE_DATA));
     memset(handle_data, 0, sizeof(EFI_IMAGE_HANDLE_DATA));
@@ -172,12 +173,34 @@ void format_pe(uint8_t* exe) {
         serial_puts("\n");
     }
 
+    serial_puts("pe_exe: image handle addr = ");
+    serial_putx((uint64_t)image_handle);
+    serial_puts("\n");
+
+    serial_puts("pe_exe: system table addr = ");
+    serial_putx((uint64_t)system_table);
+    serial_puts("\n");
+
+    serial_puts("BootServices addr=");
+    serial_putx((uint64_t)&gBootServices);
+    serial_puts("\n");
+    serial_puts("AllocatePool ptr=");
+    serial_putx((uint64_t)gBootServices.AllocatePool);
+    serial_puts("\n");
+    serial_puts("BootServices CRC=");
+    serial_putx(gBootServices.Hdr.CRC32);
+    serial_puts("\n");
+
+    serial_putx(offsetof(EFI_BOOT_SERVICES, RaiseTPL));
+    serial_putx(offsetof(EFI_BOOT_SERVICES, AllocatePages));
+    serial_putx(offsetof(EFI_BOOT_SERVICES, AllocatePool));
+    serial_putx(offsetof(EFI_BOOT_SERVICES, GetMemoryMap));
+    serial_putx(offsetof(EFI_BOOT_SERVICES, ExitBootServices));
+
     // ---- CALL ENTRY ----
     EFI_STATUS status;
 
     __asm__ volatile (
-        "cli\n"
-
         "mov %%rsp, %%r11\n"
         "and $-16, %%rsp\n"
         "sub $32, %%rsp\n"

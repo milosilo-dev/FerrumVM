@@ -54,7 +54,7 @@ static inline void int_to_hex(unsigned int n, char *buffer) {
     }
 }
 
-static inline void serial_putx(uint32_t x) {
+static void __attribute__((noinline)) serial_putx(uint32_t x) {
     char s[11];  // "0x" + 8 hex digits + null terminator
     int_to_hex(x, s);
 
@@ -64,7 +64,7 @@ static inline void serial_putx(uint32_t x) {
     }
 }
 
-static inline void serial_puts(const char *s) {
+static void __attribute__((noinline)) serial_puts(const char *s) {
     while (*s) {
         if (*s == '\n') serial_putc('\r');  // CRLF for terminals
         serial_putc(*s++);

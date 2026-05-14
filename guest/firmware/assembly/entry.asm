@@ -38,7 +38,7 @@ protected_entry:
     mov gs, ax
 
     ; Set up a proper 32-bit stack
-    mov esp, 0x400000
+    mov esp, 0x00380000
 
     ; Call into C - never returns
     extern c_main_32

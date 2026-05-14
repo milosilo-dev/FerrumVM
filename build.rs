@@ -19,7 +19,7 @@ fn build_firmware() {
     let status = Command::new(ASL)
         .args(["-tc", acpi_input.as_str()])
         .status()
-        .expect("failed to run nasm");
+        .expect("failed to run iasl");
 
     if !status.success() {
         panic!("iasl failed to compile the DSDT");
@@ -65,7 +65,7 @@ fn build_firmware() {
     let cc_output = FIRMWARE_PATH.to_owned() + "/build/main.o";
 
     let status = Command::new(CC)
-        .args(["-m32", "-ffreestanding", "-fno-stack-protector", "-nostdlib", "-isystem", "/usr/lib/gcc/x86_64-linux-gnu/13/include", "-O2", "-c", cc_input.as_str(), "-o", cc_output.as_str()])
+        .args(["-O0", "-m32", "-ffreestanding", "-fno-stack-protector", "-nostdlib", "-isystem", "/usr/lib/gcc/x86_64-linux-gnu/13/include", "-O2", "-c", cc_input.as_str(), "-o", cc_output.as_str()])
         .status()
         .expect("failed to run gcc");
 

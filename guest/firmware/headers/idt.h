@@ -44,10 +44,12 @@ static inline void idt_init(void) {
     idtp.size = sizeof(idt) - 1;
     idtp.base = (uint64_t)idt;
 
-    // install a handler for each CPU exception
     #define X(n) idt_set_entry(n, (uint64_t)isr##n);
     ISR_LIST
     #undef X
+
+    // double fault must use IST1 so it has a known-good stack
+    idt[8].ist = 1;
 
     __asm__ volatile("lidt %0" :: "m"(idtp));
 }
