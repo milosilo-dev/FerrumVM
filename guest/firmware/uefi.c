@@ -4,10 +4,15 @@
 #include "mem/heap.c"
 
 #define STUB(name, ret) \
-    static EFI_STATUS EFIAPI stub_##name() { \
+    static EFI_STATUS EFIAPI stub_##name(...) { \
         serial_puts("[STUB] " #name "\n"); \
         return ret; \
     }
+
+static EFI_STATUS EFIAPI stub_Null() {
+    serial_puts("[STUB] NULL service called — halting\n");
+    for (;;) __asm__("hlt");
+}
 
 // ── con out ───────────────────────────────────────────────────────
 
@@ -24,13 +29,19 @@ static EFI_STATUS EFIAPI efi_output_string(
     return EFI_SUCCESS;
 }
 
+STUB(ConReset,        EFI_SUCCESS)
+STUB(QueryMode,       EFI_SUCCESS)
+STUB(SetMode,         EFI_SUCCESS)
+STUB(SetAttribute,    EFI_SUCCESS)
+STUB(ClearScreen,     EFI_SUCCESS)
+
 static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
-    .Reset        = NULL,
+    .Reset        = (void*)stub_ConReset,
     .OutputString = efi_output_string,
-    .QueryMode    = NULL,
-    .SetMode      = NULL,
-    .SetAttribute = NULL,
-    .ClearScreen  = NULL,
+    .QueryMode    = (void*)stub_QueryMode,
+    .SetMode      = (void*)stub_SetMode,
+    .SetAttribute = (void*)stub_SetAttribute,
+    .ClearScreen  = (void*)stub_ClearScreen,
 };
 
 // Heap mem
@@ -42,6 +53,8 @@ static EFI_STATUS EFIAPI efi_AllocatePool(
 ) {
     void* ptr = malloc(size);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
+    memset(ptr, 0, size);
+    serial_puts("allocate pool");
     *out = ptr;
     return EFI_SUCCESS;
 }
@@ -54,6 +67,8 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 ) {
     void* ptr = malloc(pages * 4096);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
+    memset(ptr, 0, pages * 4096);
+    serial_puts("allocate pages");
     *memory = (EFI_PHYSICAL_ADDRESS)ptr;
     return EFI_SUCCESS;
 }
@@ -65,6 +80,7 @@ STUB(RestoreTPL,                    EFI_SUCCESS)
 STUB(FreePages,                     EFI_SUCCESS)
 STUB(GetMemoryMap,                  EFI_BUFFER_TOO_SMALL)
 STUB(FreePool,                      EFI_SUCCESS)
+STUB(Stall,                         EFI_SUCCESS)
 STUB(CreateEvent,                   EFI_SUCCESS)
 STUB(SetTimer,                      EFI_SUCCESS)
 STUB(WaitForEvent,                  EFI_SUCCESS)
@@ -84,7 +100,6 @@ STUB(StartImage,                    EFI_UNSUPPORTED)
 STUB(UnloadImage,                   EFI_UNSUPPORTED)
 STUB(ExitBootServices,              EFI_SUCCESS)
 STUB(GetNextMonotonicCount,         EFI_SUCCESS)
-STUB(Stall,                         EFI_SUCCESS)
 STUB(SetWatchdogTimer,              EFI_SUCCESS)
 STUB(ConnectController,             EFI_NOT_FOUND)
 STUB(DisconnectController,          EFI_SUCCESS)
@@ -164,6 +179,21 @@ static EFI_BOOT_SERVICES gBootServices = {
 
 // ── runtime services table ────────────────────────────────────────
 
+STUB(GetTime,                EFI_UNSUPPORTED)
+STUB(SetTime,                EFI_UNSUPPORTED)
+STUB(GetWakeupTime,          EFI_UNSUPPORTED)
+STUB(SetWakeupTime,          EFI_UNSUPPORTED)
+STUB(SetVirtualAddressMap,   EFI_UNSUPPORTED)
+STUB(ConvertPointer,         EFI_UNSUPPORTED)
+STUB(GetVariable,            EFI_NOT_FOUND)
+STUB(GetNextVariableName,    EFI_NOT_FOUND)
+STUB(SetVariable,            EFI_UNSUPPORTED)
+STUB(GetNextHighMonotonicCount, EFI_UNSUPPORTED)
+STUB(ResetSystem,            EFI_SUCCESS)
+STUB(UpdateCapsule,          EFI_UNSUPPORTED)
+STUB(QueryCapsuleCapabilities, EFI_UNSUPPORTED)
+STUB(QueryVariableInfo,      EFI_UNSUPPORTED)
+
 static EFI_RUNTIME_SERVICES gRuntimeServices = {
     .Hdr = {
         .Signature  = EFI_RUNTIME_SERVICES_SIGNATURE,
@@ -172,19 +202,32 @@ static EFI_RUNTIME_SERVICES gRuntimeServices = {
         .CRC32      = 0,
         .Reserved   = 0,
     },
-    // all NULL for now — Limine doesn't call runtime services before ExitBootServices
+    .GetTime                    = (void*)stub_GetTime,
+    .SetTime                    = (void*)stub_SetTime,
+    .GetWakeupTime              = (void*)stub_GetWakeupTime,
+    .SetWakeupTime              = (void*)stub_SetWakeupTime,
+    .SetVirtualAddressMap       = (void*)stub_SetVirtualAddressMap,
+    .ConvertPointer             = (void*)stub_ConvertPointer,
+    .GetVariable                = (void*)stub_GetVariable,
+    .GetNextVariableName        = (void*)stub_GetNextVariableName,
+    .SetVariable                = (void*)stub_SetVariable,
+    .GetNextHighMonotonicCount  = (void*)stub_GetNextHighMonotonicCount,
+    .ResetSystem                = (void*)stub_ResetSystem,
+    .UpdateCapsule              = (void*)stub_UpdateCapsule,
+    .QueryCapsuleCapabilities   = (void*)stub_QueryCapsuleCapabilities,
+    .QueryVariableInfo          = (void*)stub_QueryVariableInfo,
 };
 
-static EFI_CONFIGURATION_TABLE gConfigTable[2];
+static EFI_CONFIGURATION_TABLE gConfigTables[2];
 
 // ── system table ──────────────────────────────────────────────────
 
 void format_config_table() {
     gConfigTables[0].VendorGuid = (EFI_GUID)ACPI_20_TABLE_GUID;
-    gConfigTables[0].VendorTable = rsdp_address;
+    gConfigTables[0].VendorTable = (void*)(0xE0000);
 
-    config_tables[1].VendorGuid = (EFI_GUID)ACPI_TABLE_GUID;
-    config_tables[1].VendorTable = rsdp_address;
+    gConfigTables[1].VendorGuid = (EFI_GUID)ACPI_TABLE_GUID;
+    gConfigTables[1].VendorTable = (void*)(0xE0000);
 }
 
 static uint16_t gFirmwareVendor[] = { 'F','e','r','r','u','m', 0 };

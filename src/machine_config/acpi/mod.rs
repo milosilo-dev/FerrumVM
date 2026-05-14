@@ -1,3 +1,4 @@
 pub mod dsdt;
 pub mod fadt;
-pub mod rsdt;
+pub mod rsdp;
+pub mod xsdt;

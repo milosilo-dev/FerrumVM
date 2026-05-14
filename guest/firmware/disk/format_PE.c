@@ -118,7 +118,33 @@ void format_pe(uint8_t* exe) {
     uint64_t ep = (uint64_t)load_base + nt->OptionalHeader.AddressOfEntryPoint;
     serial_puts("pe_exe: jumping to    = "); serial_putx(ep); serial_puts("\n");
 
-    EFI_IMAGE_ENTRY_POINT entry = (EFI_IMAGE_ENTRY_POINT)ep;
-    EFI_STATUS status = entry(image_handle, system_table);
+    serial_puts("pe_exe: VirtualAddress=");
+    serial_putx(nt->OptionalHeader.DataDirectory[5].VirtualAddress);
+    serial_puts("\n");
+    serial_puts("pe_exe: Size=");
+    serial_putx(nt->OptionalHeader.DataDirectory[5].Size);
+    serial_puts("\n");
+
+    EFI_STATUS status;
+    __asm__ volatile (
+        "mov %%rsp, %%r11       \n"   // save original rsp
+        "sub $32, %%rsp         \n"   // shadow space
+
+        "mov %1, %%rcx          \n"   // arg1
+        "mov %2, %%rdx          \n"   // arg2
+
+        "call *%3               \n"
+
+        "mov %%rax, %0          \n"
+
+        "mov %%r11, %%rsp       \n"   // restore ORIGINAL rsp
+        : "=r"(status)
+        : "r"((uint64_t)image_handle),
+        "r"((uint64_t)system_table),
+        "r"(ep)
+        : "rax", "rcx", "rdx",
+        "r8", "r9", "r10", "r11",
+        "memory"
+    );
     serial_puts("pe_exe: entry returned = "); serial_putx(status); serial_puts("\n");
 }
