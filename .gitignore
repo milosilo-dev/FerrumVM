@@ -5,6 +5,7 @@ guest/firmware/*.bin
 guest/firmware/*.elf
 guest/firmware/build
 guest/image/disk.img
-*/BOOTX64.EFI
+guest/image/BOOTX64.EFI
+guest/image/efi_test/BOOTX64.EFI
 acpi/*.hex
 acpi/*.aml
