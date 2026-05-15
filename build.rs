@@ -1,162 +1,212 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
 use walkdir::WalkDir;
 
 const ASM: &str = "nasm";
 const ASL: &str = "iasl";
-const CC: &str = "i686-elf-gcc";
+const CC32: &str = "i686-elf-gcc";
 const CC64: &str = "x86_64-linux-gnu-gcc";
 const LD: &str = "ld";
-const OBJ: &str = "objcopy";
+const OBJCOPY: &str = "objcopy";
 
-const FIRMWARE_PATH: &str = "guest/firmware";
-const ACPI_PATH: &str = "acpi";
+const FIRMWARE_DIR: &str = "guest/firmware";
+const BUILD_DIR: &str = "guest/firmware/build";
+const ACPI_DIR: &str = "acpi";
 const DISK_FILE: &str = "guest/disk.bin";
 
-fn build_firmware() {
-    fs::create_dir_all(FIRMWARE_PATH.to_owned() + "/build").unwrap();
-
-    let acpi_input = ACPI_PATH.to_owned() + "/DSDT.dsl";
-    let status = Command::new(ASL)
-        .args(["-tc", acpi_input.as_str()])
+fn run(cmd: &str, args: &[&str], error: &str) {
+    let status = Command::new(cmd)
+        .args(args)
         .status()
-        .expect("failed to run iasl");
+        .unwrap_or_else(|e| panic!("{error}: {e}"));
 
     if !status.success() {
-        panic!("iasl failed to compile the DSDT");
+        panic!("{error}");
     }
+}
 
-    let asm_entry_input = FIRMWARE_PATH.to_owned() + "/assembly/entry.asm";
-    let asm_entry_output = FIRMWARE_PATH.to_owned() + "/build/entry.o";
+fn build_acpi() {
+    let dsdt = format!("{ACPI_DIR}/DSDT.dsl");
 
-    let status = Command::new(ASM)
-        .args(["-f", "elf32", asm_entry_input.as_str(), "-o", asm_entry_output.as_str()])
-        .status()
-        .expect("failed to run nasm");
+    run(
+        ASL,
+        &["-tc", &dsdt],
+        "failed to compile DSDT",
+    );
+}
 
-    if !status.success() {
-        panic!("nasm failed to assemble firmware entry stub");
-    }
+fn assemble(input: &str, output: &str, format: &str) {
+    run(
+        ASM,
+        &["-f", format, input, "-o", output],
+        &format!("failed to assemble {input}"),
+    );
+}
 
-    let asm_idt_input = FIRMWARE_PATH.to_owned() + "/assembly/idt_handlers.asm";
-    let asm_idt_output = FIRMWARE_PATH.to_owned() + "/build/idt_handlers.o";
-
-    let status = Command::new(ASM)
-        .args(["-f", "elf64", asm_idt_input.as_str(), "-o", asm_idt_output.as_str()])
-        .status()
-        .expect("failed to run nasm");
-
-    if !status.success() {
-        panic!("nasm failed to assemble firmware entry stub");
-    }
-
-    let asm_entry64_input = FIRMWARE_PATH.to_owned() + "/assembly/entry64.asm";
-    let asm_entry64_output = FIRMWARE_PATH.to_owned() + "/build/entry64.o";
-
-    let status = Command::new(ASM)
-        .args(["-f", "elf64", asm_entry64_input.as_str(), "-o", asm_entry64_output.as_str()])
-        .status()
-        .expect("failed to run nasm");
-
-    if !status.success() {
-        panic!("nasm failed to assemble firmware entry stub");
-    }
-
-    let cc_input = FIRMWARE_PATH.to_owned() + "/main.c";
-    let cc_output = FIRMWARE_PATH.to_owned() + "/build/main.o";
-
-    let status = Command::new(CC)
-        .args(["-O0", "-m32", "-ffreestanding", "-fno-stack-protector", "-nostdlib", "-isystem", "/usr/lib/gcc/x86_64-linux-gnu/13/include", "-O2", "-c", cc_input.as_str(), "-o", cc_output.as_str()])
-        .status()
-        .expect("failed to run gcc");
-
-    if !status.success() {
-        panic!("gcc failed to compile firmware c_main");
-    }
-
-    let cc64_input = FIRMWARE_PATH.to_owned() + "/main64.c";
-    let cc64_output = FIRMWARE_PATH.to_owned() + "/build/main64.o";
-
-    let status = Command::new(CC64)
-        .args([
-            "-m64", "-ffreestanding", "-fno-stack-protector",
-            "-mno-red-zone", "-mcmodel=kernel", "-fno-pic", "-fno-pie",
+fn compile_c32(input: &str, output: &str) {
+    run(
+        CC32,
+        &[
+            "-m32",
+            "-ffreestanding",
+            "-fno-stack-protector",
             "-nostdlib",
-            "-isystem", "/usr/lib/gcc/x86_64-linux-gnu/13/include",
-            "-O2", "-c",
-            cc64_input.as_str(), "-o", cc64_output.as_str()
-        ])
-        .status().expect("failed to run gcc64");
-    if !status.success() { panic!("gcc64 failed"); }
+            "-isystem",
+            "/usr/lib/gcc/x86_64-linux-gnu/13/include",
+            "-O2",
+            "-c",
+            input,
+            "-o",
+            output,
+        ],
+        &format!("failed to compile {input}"),
+    );
+}
 
-    let ld64_script  = FIRMWARE_PATH.to_owned() + "/linkerscript/linker64.ld";
-    let ld64_elf     = FIRMWARE_PATH.to_owned() + "/build/main64.elf";
-    let ld64_bin     = FIRMWARE_PATH.to_owned() + "/build/main64.bin";
+fn compile_c64(input: &str, output: &str) {
+    run(
+        CC64,
+        &[
+            "-m64",
+            "-ffreestanding",
+            "-fno-stack-protector",
+            "-mno-red-zone",
+            "-mcmodel=kernel",
+            "-fno-pic",
+            "-fno-pie",
+            "-nostdlib",
+            "-isystem",
+            "/usr/lib/gcc/x86_64-linux-gnu/13/include",
+            "-O2",
+            "-c",
+            input,
+            "-o",
+            output,
+        ],
+        &format!("failed to compile {input}"),
+    );
+}
 
-    let status = Command::new("ld")
-        .args([
-            "-T", ld64_script.as_str(),
-            "-o", ld64_elf.as_str(),
-            asm_idt_output.as_str(),
-            cc64_output.as_str(),
-        ])
-        .status().expect("failed to run ld64");
-    if !status.success() { panic!("ld64 failed"); }
+fn link(
+    output: &str,
+    linker_script: &str,
+    inputs: &[&str],
+    extra_args: &[&str],
+) {
+    let mut args = Vec::new();
 
-    let status = Command::new(OBJ)
-        .args(["-O", "binary", ld64_elf.as_str(), ld64_bin.as_str()])
-        .status().expect("failed to run objcopy for main64");
-    if !status.success() { panic!("objcopy main64 failed"); }
+    args.extend_from_slice(extra_args);
+    args.extend_from_slice(&["-T", linker_script, "-o", output]);
+    args.extend_from_slice(inputs);
 
-    let ld_output = FIRMWARE_PATH.to_owned() + "/build/out.elf";
-    let ld_script = FIRMWARE_PATH.to_owned() + "/linkerscript/linker.ld";
+    run(LD, &args, "linking failed");
+}
 
-    let status = Command::new(LD)
-        .args([
-            "-m", "elf_i386",
-            "-T", ld_script.as_str(),
-            "-o", ld_output.as_str(),
-            asm_entry_output.as_str(),
-            cc_output.as_str(),
-        ])
-        .status()
-        .expect("failed to run ld");
+fn objcopy_binary(input: &str, output: &str) {
+    run(
+        OBJCOPY,
+        &["-O", "binary", input, output],
+        &format!("failed to objcopy {input}"),
+    );
+}
 
-    if !status.success() {
-        panic!("ld failed to link firmware");
-    }
+fn build_firmware() {
+    fs::create_dir_all(BUILD_DIR).unwrap();
 
-    let obj_output = FIRMWARE_PATH.to_owned() + "/build/out.bin";
+    build_acpi();
 
-    let status = Command::new(OBJ)
-        .args(["-O", "binary", ld_output.as_str(), obj_output.as_str()])
-        .status()
-        .expect("failed to run objcopy");
+    // ===== Assembly =====
 
-    if !status.success() {
-        panic!("objcopy failed to create flat binary");
-    }
+    let entry32_o = format!("{BUILD_DIR}/entry.o");
+    assemble(
+        &format!("{FIRMWARE_DIR}/assembly/entry.asm"),
+        &entry32_o,
+        "elf32",
+    );
+
+    let idt_o = format!("{BUILD_DIR}/idt_handlers.o");
+    assemble(
+        &format!("{FIRMWARE_DIR}/assembly/idt_handlers.asm"),
+        &idt_o,
+        "elf64",
+    );
+
+    let entry64_o = format!("{BUILD_DIR}/entry64.o");
+    assemble(
+        &format!("{FIRMWARE_DIR}/assembly/entry64.asm"),
+        &entry64_o,
+        "elf64",
+    );
+
+    // ===== C =====
+
+    let main32_o = format!("{BUILD_DIR}/main.o");
+    compile_c32(
+        &format!("{FIRMWARE_DIR}/main.c"),
+        &main32_o,
+    );
+
+    let main64_o = format!("{BUILD_DIR}/main64.o");
+    compile_c64(
+        &format!("{FIRMWARE_DIR}/main64.c"),
+        &main64_o,
+    );
+
+    // ===== 64-bit firmware =====
+
+    let main64_elf = format!("{BUILD_DIR}/main64.elf");
+    let main64_bin = format!("{BUILD_DIR}/main64.bin");
+
+    link(
+        &main64_elf,
+        &format!("{FIRMWARE_DIR}/linkerscript/linker64.ld"),
+        &[&idt_o, &entry64_o, &main64_o],
+        &[],
+    );
+
+    objcopy_binary(&main64_elf, &main64_bin);
+
+    // ===== 32-bit firmware =====
+
+    let firmware_elf = format!("{BUILD_DIR}/out.elf");
+    let firmware_bin = format!("{BUILD_DIR}/out.bin");
+
+    link(
+        &firmware_elf,
+        &format!("{FIRMWARE_DIR}/linkerscript/linker.ld"),
+        &[&entry32_o, &main32_o],
+        &["-m", "elf_i386"],
+    );
+
+    objcopy_binary(&firmware_elf, &firmware_bin);
 }
 
 fn ensure_disk_file() {
-    let path = Path::new(DISK_FILE);
-
-    if !path.is_file() {
-        let status = Command::new("dd")
-            .args(["if=/dev/random", format!("of={}", DISK_FILE).as_str(), "bs=1M", "count=64"])
-            .status()
-            .expect("failed to run nasm");
-
-        if !status.success() {
-            panic!("DD could not make disk");
-        }
+    if Path::new(DISK_FILE).exists() {
+        return;
     }
+
+    run(
+        "dd",
+        &[
+            "if=/dev/random",
+            &format!("of={DISK_FILE}"),
+            "bs=1M",
+            "count=64",
+        ],
+        "failed to create disk image",
+    );
 }
 
-fn build() {
-    build_firmware();
-    ensure_disk_file();
-
-    for entry in WalkDir::new("guest/test").into_iter().filter_map(Result::ok) {
+fn build_tests() {
+    for entry in WalkDir::new("guest/test")
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         let path = entry.path();
 
         if !path.is_file() {
@@ -167,23 +217,30 @@ fn build() {
             continue;
         }
 
-        println!("Compiling {}", path.display());
-
-        let input = path.to_str().unwrap();
-        let output = path.with_extension("bin");
-        let output = output.to_str().unwrap();
-
-        let status = Command::new(ASM)
-            .args(["-f", "bin", input, "-o", output])
-            .status()
-            .expect("failed to run nasm");
-
-        if !status.success() {
-            panic!("nasm failed on {}", input);
-        }
+        compile_test(path);
     }
 }
 
+fn compile_test(path: &Path) {
+    println!("Compiling {}", path.display());
+
+    let output: PathBuf = path.with_extension("bin");
+
+    run(
+        ASM,
+        &[
+            "-f",
+            "bin",
+            path.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ],
+        &format!("failed to assemble {}", path.display()),
+    );
+}
+
 fn main() {
-    build(); // MUST exit immediately
+    build_firmware();
+    ensure_disk_file();
+    build_tests();
 }

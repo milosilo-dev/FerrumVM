@@ -1,7 +1,12 @@
 #!/bin/bash
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_PATH" || exit
 
 IMG=disk.img
 MNT=/mnt/esp
+
+./efi_test/build.sh
+cp $1 BOOTX64.EFI
 
 # 1. Create empty disk (64MB)
 dd if=/dev/zero of=$IMG bs=1M count=64

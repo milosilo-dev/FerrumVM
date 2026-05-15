@@ -158,21 +158,6 @@ void format_pe(uint8_t* exe) {
     if (dir_count > IMAGE_NUMBEROF_DIRECTORY_ENTRIES)
         dir_count = IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
 
-    for (uint32_t i = 0; i < dir_count; i++) {
-        IMAGE_DATA_DIRECTORY* dir =
-            get_dir(&nt->OptionalHeader, i, nt->FileHeader.SizeOfOptionalHeader);
-
-        if (!dir) continue;
-
-        serial_puts("dir ");
-        serial_putx(i);
-        serial_puts(" va=");
-        serial_putx(dir->VirtualAddress);
-        serial_puts(" size=");
-        serial_putx(dir->Size);
-        serial_puts("\n");
-    }
-
     serial_puts("pe_exe: image handle addr = ");
     serial_putx((uint64_t)image_handle);
     serial_puts("\n");
@@ -181,21 +166,15 @@ void format_pe(uint8_t* exe) {
     serial_putx((uint64_t)system_table);
     serial_puts("\n");
 
-    serial_puts("BootServices addr=");
+    serial_puts("pe_exe: BootServices addr=");
     serial_putx((uint64_t)&gBootServices);
     serial_puts("\n");
-    serial_puts("AllocatePool ptr=");
+    serial_puts("pe_exe: AllocatePool ptr=");
     serial_putx((uint64_t)gBootServices.AllocatePool);
     serial_puts("\n");
-    serial_puts("BootServices CRC=");
+    serial_puts("pe_exe: BootServices CRC=");
     serial_putx(gBootServices.Hdr.CRC32);
     serial_puts("\n");
-
-    serial_putx(offsetof(EFI_BOOT_SERVICES, RaiseTPL));
-    serial_putx(offsetof(EFI_BOOT_SERVICES, AllocatePages));
-    serial_putx(offsetof(EFI_BOOT_SERVICES, AllocatePool));
-    serial_putx(offsetof(EFI_BOOT_SERVICES, GetMemoryMap));
-    serial_putx(offsetof(EFI_BOOT_SERVICES, ExitBootServices));
 
     // ---- CALL ENTRY ----
     EFI_STATUS status;
