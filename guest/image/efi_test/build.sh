@@ -28,4 +28,6 @@ $CC \
     "$INPUT" \
     -o "$OUTPUT"
 
+rm -r ${SCRIPT_DIR}/main.elf ${SCRIPT_DIR}/main.o
+
 echo "[+] Built $OUTPUT"
