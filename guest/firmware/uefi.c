@@ -222,9 +222,32 @@ static EFI_STATUS EFIAPI stub_FreePool(void* a, void* b, void* c, void* d) {
     return EFI_SUCCESS;
 }
 
-static EFI_STATUS EFIAPI efi_GetMemoryMap(uint64_t *MemoryMapSize, EFI_MEMORY_DESCRIPTOR *MemoryMap) {
-    serial_puts("[EFI] MemoryMap\n");
-    return EFI_BUFFER_TOO_SMALL;
+static EFI_STATUS EFIAPI efi_GetMemoryMap(uint64_t *MemoryMapSize, 
+    EFI_MEMORY_DESCRIPTOR *MemoryMap,
+    UINTN *MapKey, 
+    UINTN *DescriptorSize, 
+    UINT32 *DescriptorVersion) 
+{
+    serial_puts("[EFI] MemoryMap path=");
+    uint64_t required_size = memmap_length * sizeof(EFI_MEMORY_DESCRIPTOR);
+    if (MemoryMap == NULL || *MemoryMapSize < required_size){
+        *MemoryMapSize = required_size;
+        serial_puts("(BUFFER TOO SMALL) descriptor_size=0x");
+        serial_putx(sizeof(EFI_MEMORY_DESCRIPTOR));
+        serial_puts(" requiered_size=0x");
+        serial_putx(required_size);
+        serial_puts("\n");
+        return EFI_BUFFER_TOO_SMALL;
+    }
+
+    memmap_to_uefi(MemoryMap, required_size);
+
+    *MemoryMapSize = required_size;
+    *MapKey = 1;
+    *DescriptorSize = sizeof(EFI_MEMORY_DESCRIPTOR);
+    *DescriptorVersion = 1;
+    serial_puts("(SUCCESS)\n");
+    return EFI_SUCCESS;
 }
 
 STUB(RaiseTPL,                      EFI_SUCCESS)

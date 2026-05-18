@@ -53,11 +53,11 @@ uint32_t memmap_to_uefi(EFI_MEMORY_DESCRIPTOR* buf, uint32_t length) {
     }
 
     for (int i = 0; i < max_entries; i ++) {
-        MemMapEntry* entry = (MemMapEntry*)((uint64_t)memmap + i);
-        buf[i]->type = entry->type;
-        buf[i]->PhysicalStart = entry->start;
-        buf[i]->VirtualStart = entry->start;
-        buf[i]->NumberofPages = (entry->start - entry->end) / 4096;
+        MemMapEntry* entry = (MemMapEntry*)((uint64_t)memmap + i * sizeof(MemMapEntry));
+        buf[i].Type = entry->type;
+        buf[i].PhysicalStart = entry->start;
+        buf[i].VirtualStart = entry->start;
+        buf[i].NumberOfPages = (entry->end - entry->start) / 4096;
     }
     return max_entries;
 }
