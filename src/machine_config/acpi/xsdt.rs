@@ -1,4 +1,4 @@
-use crate::machine_config::binary::Binary;
+use crate::machine_config::binary::{Binary};
 
 pub fn build_xsdt(table_addrs: &[u64]) -> Binary {
     let total_len = 36 + table_addrs.len() * 8;

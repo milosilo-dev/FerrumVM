@@ -1,4 +1,5 @@
 #include "headers/uefi/uefi.h"
+#include "headers/serial.h"
 #include "headers/uefi/crc32.h"
 #include "headers/uefi/config_table.h"
 #include "headers/uefi/stip.h"
@@ -21,6 +22,7 @@ static EFI_STATUS EFIAPI efi_output_string(
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This,
     uint16_t *String
 ) {
+    serial_puts("[EFI] Output String \n");
     while (*String) {
         char c = (char)(*String & 0xFF);
         if (c == '\n') serial_putc('\r');
@@ -31,7 +33,7 @@ static EFI_STATUS EFIAPI efi_output_string(
 }
 
 static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
-    serial_puts("[STUB] Stall us=");
+    serial_puts("[EFI] Stall us=");
     serial_putx(microseconds);
     // print return address so you know who's calling
     uint64_t ra;
@@ -151,7 +153,7 @@ static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
     VOID       *Interface,
     VOID       *DevicePath
 ) {
-    serial_puts("[STUB] InstallProtocolInterface\n");
+    serial_puts("[EFI] InstallProtocolInterface\n");
     if (Handle && *Handle == NULL)
         *Handle = (EFI_HANDLE)(uint64_t)4;
     if (Handle && Protocol && gProtocolCount < MAX_PROTOCOLS) {
@@ -165,6 +167,7 @@ static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
 
 // find first matching protocol in database; returns NULL if not found
 static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
+    serial_puts("[EFI] FindProtocol \n");
     if (!guid) return NULL;
     for (int i = 0; i < gProtocolCount; i++) {
         if (gProtocolDB[i].handle == handle &&
@@ -177,7 +180,7 @@ static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
 static EFI_STATUS EFIAPI efi_LocateProtocol(
     EFI_GUID *guid, VOID *reg, VOID **iface
 ) {
-    serial_puts("[STUB] LocateProtocol {");
+    serial_puts("[EFI] LocateProtocol {");
     serial_putx(guid->Data1); serial_puts("-");
     serial_putx(guid->Data2); serial_puts("-");
     serial_putx(guid->Data3); serial_puts("}\n");
@@ -213,14 +216,20 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
 }
 
 static EFI_STATUS EFIAPI stub_FreePool(void* a, void* b, void* c, void* d) {
+    serial_puts("[EFI] FreePool\n");
     if (!a) return EFI_INVALID_PARAMETER;
     free(a);
     return EFI_SUCCESS;
 }
+
+static EFI_STATUS EFIAPI efi_GetMemoryMap() {
+    serial_puts("[EFI] MemoryMap\n");
+    return EFI_BUFFER_TOO_SMALL;
+}
+
 STUB(RaiseTPL,                      EFI_SUCCESS)
 STUB(RestoreTPL,                    EFI_SUCCESS)
 STUB(FreePages,                     EFI_SUCCESS)
-STUB(GetMemoryMap,                  EFI_BUFFER_TOO_SMALL)
 STUB(CreateEvent,                   EFI_SUCCESS)
 STUB(SetTimer,                      EFI_SUCCESS)
 STUB(WaitForEvent,                  EFI_SUCCESS)
@@ -381,7 +390,7 @@ static EFI_BOOT_SERVICES gBootServices = {
     .RestoreTPL                         = (void*)stub_RestoreTPL,
     .AllocatePages                      = (void*)efi_AllocatePages,
     .FreePages                          = (void*)stub_FreePages,
-    .GetMemoryMap                       = (void*)stub_GetMemoryMap,
+    .GetMemoryMap                       = (void*)efi_GetMemoryMap,
     .AllocatePool                       = (void*)efi_AllocatePool,
     .FreePool                           = (void*)stub_FreePool,
     .CreateEvent                        = (void*)stub_CreateEvent,

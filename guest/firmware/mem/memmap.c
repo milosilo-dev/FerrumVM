@@ -1,11 +1,12 @@
 #include <stdint.h>
+#include "../headers/uefi/uefi.h"
 
 #define MEMMAP_MAX_ENTRIES 16
 #define MEMMAP_MGK_NUM 0xFE02FE02
 
 typedef struct {
-    uint64_t base;
-    uint64_t length;
+    uint64_t start;
+    uint64_t end;
     uint32_t type;
 } __attribute__((packed)) MemMapEntry;
 
@@ -15,6 +16,7 @@ typedef struct {
 } __attribute__((packed)) MemMapHeader;
 
 MemMapEntry memmap[MEMMAP_MAX_ENTRIES];
+static uint32_t memmap_length;
 
 void init_memmap() {
     MemMapHeader* header = (MemMapHeader *)0x7000;
@@ -23,14 +25,36 @@ void init_memmap() {
 
     if (header->mgk_num == MEMMAP_MGK_NUM) {
         uint32_t length = header->length;
+        memmap_length = length;
         serial_puts("mem_map: length = ");
         serial_putx(length); serial_puts("\n");
         for (int i = 0; i < length; i++) {
             if (i - 1 < MEMMAP_MAX_ENTRIES) {
                 MemMapEntry* entry = (MemMapEntry *)((uint8_t *)0x7000 + 8 + i * 20);
-
+                serial_puts("mem_map: Entry ");
+                serial_putx(i);
+                serial_puts(" base= ");
+                serial_putx(entry->start);
+                serial_puts(" length= ");
+                serial_putx(entry->end - entry->start);
+                serial_puts(" type= ");
+                serial_putx(entry->type);
+                serial_puts("\n");
                 memmap[i] = *entry;
             }
         }
     }
+}
+
+typedef struct {
+    uint32_t              Type;           // EFI memory type from above
+    uint32_t              Pad;            // padding to align PhysicalStart
+    EFI_PHYSICAL_ADDRESS  PhysicalStart;  // start of region (page aligned)
+    EFI_VIRTUAL_ADDRESS   VirtualStart;   // virtual address (set by OS later)
+    uint64_t              NumberOfPages;  // size in 4KB pages
+    uint64_t              Attribute;      // EFI_MEMORY_WB etc
+} EFI_MEMORY_DESCRIPTOR;
+
+void memmap_to_uefi(void* buf, uint32_t length) {
+    uint32_t max_entries = length / sizeof(EFI_MEMORY_DESCRIPTOR);
 }

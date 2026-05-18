@@ -4,7 +4,7 @@ use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
     devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
     irq::map::IrqMap,
-    machine_config::{binary::Binary, machine_config::{MachineConfig, MemoryRegionConfig}},
+    machine_config::{binary::{Binary}, machine_config::{MachineConfig, MemoryRegionConfig}},
     vm::vm::VirtualMachine,
 };
 
@@ -45,7 +45,7 @@ fn main() {
         code_entry: 0xFFF0,  // CPU starts executing here
     };
     machine_config.inject_acpi_tables();
-    machine_config.inject_memmap(None);
+    machine_config.inject_memmap();
 
     let mut vm = VirtualMachine::new(machine_config);
 

@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use crate::machine_config::binary::Binary;
+use crate::machine_config::binary::{Binary};
 
 pub fn load_dsdt() -> Binary {
     let dsdt = fs::read("acpi/DSDT.aml").unwrap();
