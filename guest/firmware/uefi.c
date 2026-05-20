@@ -218,6 +218,21 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
     return EFI_SUCCESS;
 }
 
+static EFI_STATUS efi_GetVariable(
+    CHAR16   *VariableName,
+    EFI_GUID *VendorGuid,
+    UINT32   *Attributes,
+    UINTN    *DataSize,
+    VOID     *Data
+) {
+    serial_puts("[EFI] GetVarible name='");
+    for (int i = 0; i < 10; i++) {
+        serial_puts("uh");
+        serial_putc(VariableName[i]);
+    }
+    serial_puts("'\n");
+}
+
 static EFI_STATUS EFIAPI stub_FreePool(void* a, void* b, void* c, void* d) {
     serial_puts("[EFI] FreePool\n");
     if (!a) return EFI_INVALID_PARAMETER;
@@ -499,7 +514,7 @@ static EFI_RUNTIME_SERVICES gRuntimeServices = {
     .SetWakeupTime              = (void*)stub_SetWakeupTime,
     .SetVirtualAddressMap       = (void*)stub_SetVirtualAddressMap,
     .ConvertPointer             = (void*)stub_ConvertPointer,
-    .GetVariable                = (void*)stub_GetVariable,
+    .GetVariable                = (void*)efi_GetVariable,
     .GetNextVariableName        = (void*)stub_GetNextVariableName,
     .SetVariable                = (void*)stub_SetVariable,
     .GetNextHighMonotonicCount  = (void*)stub_GetNextHighMonotonicCount,
