@@ -16,6 +16,8 @@ static EFI_STATUS EFIAPI stub_Null() {
     return EFI_SUCCESS;
 }
 
+static uint64_t map_key = 1;
+
 // ── con out ───────────────────────────────────────────────────────
 
 static EFI_STATUS EFIAPI efi_output_string(
@@ -93,6 +95,7 @@ static EFI_STATUS EFIAPI efi_AllocatePool(
     serial_puts("AllocatePool result=");
     serial_putx((uint64_t)ptr);
     serial_puts("\n");
+    map_key++;
 
     return EFI_SUCCESS;
 }
@@ -121,6 +124,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     serial_puts("AllocatePages result=");
     serial_putx((uint64_t)*memory);
     serial_puts("\n");
+    map_key++;
 
     return EFI_SUCCESS;
 }
@@ -242,11 +246,20 @@ static EFI_STATUS EFIAPI efi_GetMemoryMap(uint64_t *MemoryMapSize,
 
     memmap_to_uefi(MemoryMap, required_size);
 
-    *MemoryMapSize = required_size;
-    *MapKey = 1;
+    serial_puts("(SUCCESS) MemoryMapSize=0x");
+    serial_putx(*MemoryMapSize);
+    serial_puts(" MapKey=0x");
+    serial_putx(map_key);
+    serial_puts(" DescriptorSize=0x");
+    serial_putx(*DescriptorSize);
+    serial_puts(" DescriptorVersion=");
+    serial_putx(*DescriptorVersion);
+    serial_puts("\n");
+
+    *MemoryMapSize = memmap_length * sizeof(EFI_MEMORY_DESCRIPTOR);
+    *MapKey = map_key;
     *DescriptorSize = sizeof(EFI_MEMORY_DESCRIPTOR);
     *DescriptorVersion = 1;
-    serial_puts("(SUCCESS)\n");
     return EFI_SUCCESS;
 }
 
