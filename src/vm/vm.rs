@@ -10,4 +10,5 @@ pub struct VirtualMachine {
     pub(crate) io_map: Arc<Mutex<IODeviceMap>>,
     pub(crate) mmio_map: Arc<Mutex<MMIODeviceMap>>,
     pub(crate) memory_regions: GuestMemoryHandle,
+    pub(crate) exits: u32,
 }

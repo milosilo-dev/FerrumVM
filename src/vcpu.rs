@@ -2,6 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use kvm_bindings::{kvm_regs, kvm_segment};
 use kvm_ioctls::{VcpuFd, VmFd};
+use kvm_bindings::kvm_cpuid2;
+use vmm_sys_util::fam::FamStructWrapper;
 
 pub struct VCPU {
     pub fd: VcpuFd,
@@ -43,11 +45,24 @@ fn real_mode_data_seg(base: u64, selector: u16) -> kvm_segment {
     }
 }
 
+fn filter_cpuid(cpuid: &mut FamStructWrapper<kvm_cpuid2>) {
+    for entry in cpuid.as_mut_slice() {
+        match entry.function {
+            0x1 => {
+                // CPUID.1:EDX[16] = PAT
+                entry.edx &= !(1 << 16);
+            }
+            _ => {}
+        }
+    }
+}
+
 impl VCPU {
-    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize, cpuid: &vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>) -> Self {
+    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize, mut cpuid: &mut vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>) -> Self {
         let vm_lock = vm.lock().unwrap();
         let vcpu = vm_lock.create_vcpu(0).unwrap();
 
+        filter_cpuid(&mut cpuid);
         let _ = vcpu.set_cpuid2(cpuid).unwrap();
 
         let mut sregs = vcpu.get_sregs().unwrap();

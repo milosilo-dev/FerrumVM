@@ -5,6 +5,8 @@
 #include "headers/uefi/stip.h"
 #include "mem/heap.c"
 
+#define TSC_MHZ 3000
+
 #define STUB(name, ret) \
     static EFI_STATUS EFIAPI stub_##name( \
         void* a, void* b, void* c, void* d) { \
@@ -36,12 +38,12 @@ static EFI_STATUS EFIAPI efi_output_string(
 static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
     serial_puts("[EFI] Stall us=");
     serial_putx(microseconds);
-    // print return address so you know who's calling
-    uint64_t ra;
-    __asm__("mov 8(%%rbp), %0" : "=r"(ra));
-    serial_puts(" caller=");
-    serial_putx(ra);
     serial_puts("\n");
+    volatile uint64_t x = microseconds * 1000;
+
+    while (x--)
+        __asm__ volatile("pause");
+
     return EFI_SUCCESS;
 }
 

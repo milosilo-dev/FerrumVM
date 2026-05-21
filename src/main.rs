@@ -2,9 +2,9 @@ use std::fs;
 
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
+    devices::{cmos::Cmos, pci::PCI, serial::Serial, timer::Pit, virtio::{devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
     irq::map::IrqMap,
-    machine_config::{binary::{Binary}, machine_config::{MachineConfig, MemoryRegionConfig}},
+    machine_config::{binary::Binary, machine_config::{MachineConfig, MemoryRegionConfig}},
     vm::vm::VirtualMachine,
 };
 
@@ -13,6 +13,7 @@ fn main() {
     let com2 = Box::new(Serial::new());
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
+    let pci = Box::new(PCI::new());
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
     let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1));
     let blk = Box::new(MMIOTransport::new(Box::new(BlkVirtio::new("guest/image/disk.img")), 1));
@@ -40,6 +41,7 @@ fn main() {
             MMIODeviceRegion::new(0x10001000..=0x10001FFF, rng),
             MMIODeviceRegion::new(0x10002000..=0x10002FFF, cnt),
             MMIODeviceRegion::new(0x10003000..=0x10003FFF, blk),
+            MMIODeviceRegion::new(0xE0000000..=0xE1000000, pci),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0,  // CPU starts executing here

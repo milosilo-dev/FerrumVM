@@ -36,7 +36,14 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
+        self.exits += 1;
         let exit = self.vcpu.fd.run().expect("run failed");
+
+        if self.exits % 1000 == 0 {
+            println!("VM Alive, exit={:?}", exit);
+            self.exits = 1;
+        }
+
         match exit {
             VcpuExit::Hlt => {
                 let regs = self.vcpu.fd.get_regs().ok();
@@ -92,6 +99,7 @@ impl VirtualMachine {
                     println!("INCORRECT_MMIO_INPUT_LENGTH");
                     return Err(CrashReason::IncorrectMMIOReadLength);
                 }
+
                 data.copy_from_slice(&io_ret);
             }
             VcpuExit::FailEntry(reason, ..) => {
@@ -109,7 +117,6 @@ impl VirtualMachine {
                 return Err(CrashReason::Shutdown);
             }
             exit_reason => {
-                std::io::stdout().flush().ok();
                 println!("Unhandled exit: {:?}", exit_reason);
             }
         }

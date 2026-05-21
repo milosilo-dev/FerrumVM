@@ -57,13 +57,14 @@ impl VirtualMachine {
             }
         }
 
-        let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry, &cpuid);
+        let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry, &mut cpuid);
         let mut this = Self {
             vcpu,
             vm: Arc::clone(&vm),
             io_map: Arc::clone(&io_map),
             mmio_map: Arc::clone(&mmio_map),
             memory_regions: Arc::clone(&guest_memory),
+            exits: 0,
         };
 
         for mem in machine_config.memory_regions {

@@ -57,45 +57,35 @@ gdt_ptr:
     dw gdt_end - gdt_start - 1
     dd gdt_start
 
+BITS 32
 global enter_long_mode
+
 enter_long_mode:
-    ; Set CR3
-    mov eax, [esp + 4]
+    mov eax, [esp + 4]   ; page table
+
     mov cr3, eax
 
-    ; Enable PAE, SSE, NX
     mov eax, cr4
-    or  eax, (1 << 5)  ; PAE
-    or  eax, (1 << 9)  ; OSFXSR — enable SSE
-    or  eax, (1 << 10) ; OSXMMEXCPT — SSE exception
-    or  eax, (1 << 11) ; NXE — NX bit in page tables
+    or  eax, (1 << 5)     ; PAE
     mov cr4, eax
 
-    ; Read EFER
     mov ecx, 0xC0000080
     rdmsr
-    ; Set long mode enable bit
-    or eax, (1 << 8)
+    or eax, (1 << 8)      ; LME
     wrmsr
 
-    ; Enable paging
     mov eax, cr0
-    or  eax, (1 << 31)
+    or  eax, (1 << 31)    ; PG
     mov cr0, eax
 
     jmp 0x18:long_mode_entry
 
 BITS 64
 long_mode_entry:
-    ; Reload data segments with 64-bit data selector
     mov ax, 0x20
     mov ds, ax
-    mov es, ax
     mov ss, ax
-    mov fs, ax
-    mov gs, ax
+    mov rsp, 0x3000000
 
-    ; Call 64-bit C entry — never returns
-    mov rax, 0x100000   ; address of main64.bin
-    call rax            ; call c_main_64
+    call 0x100000
     hlt
