@@ -19,23 +19,32 @@ DefinitionBlock (
             Name (_UID, 0)
 
             // Define the Memory Range for VirtIO MMIO
-            // Update 0x10000000 and 0x100000 to match your VMM
+            // Update to match your VMM
             Method (_CRS, 0, NotSerialized)
             {
                 Return (ResourceTemplate ()
                 {
                     // Memory32Fixed: ReadWrite, Base, Length
-                    Memory32Fixed (ReadWrite, 0x10000000, 0x100000)
+                    Memory32Fixed (ReadWrite, 0x20000000, 0x10000)
                 })
             }
 
             // 2. Define VirtIO Devices
             // Each device needs a unique _UID and an _ADR (offset)
             
-            // VirtIO Console
-            Device (CON0)
+            // VirtIO RNG
+            Device (RNG0)
             {
                 Name (_UID, 1)
+                Name (_ADR, 0x00000000) // Offset 0x0
+                
+                Method (_STA, 0, NotSerialized) { Return (0x0F) }
+            }
+
+            // VirtIO Counter
+            Device (CNT0)
+            {
+                Name (_UID, 2)
                 Name (_ADR, 0x00001000) // Offset 0x1000
                 
                 Method (_STA, 0, NotSerialized) { Return (0x0F) }
@@ -44,17 +53,8 @@ DefinitionBlock (
             // VirtIO Block (Disk)
             Device (DISK)
             {
-                Name (_UID, 2)
-                Name (_ADR, 0x00002000) // Offset 0x2000
-                
-                Method (_STA, 0, NotSerialized) { Return (0x0F) }
-            }
-
-            // VirtIO Network
-            Device (NET0)
-            {
                 Name (_UID, 3)
-                Name (_ADR, 0x00003000) // Offset 0x3000
+                Name (_ADR, 0x00002000) // Offset 0x2000
                 
                 Method (_STA, 0, NotSerialized) { Return (0x0F) }
             }

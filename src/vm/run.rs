@@ -39,9 +39,8 @@ impl VirtualMachine {
         self.exits += 1;
         let exit = self.vcpu.fd.run().expect("run failed");
 
-        if self.exits % 1000 == 0 {
+        if self.exits % 100000 == 0 {
             println!("VM Alive, exit={:?}", exit);
-            self.exits = 1;
         }
 
         match exit {

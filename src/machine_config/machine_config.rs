@@ -27,7 +27,8 @@ impl MachineConfig {
             MemMap{start: 0x0100000, end: 0x0200000,  mem_type: MemType::BootServicesCode as u32},
             MemMap{start: 0x0200000, end: 0x1200000,  mem_type: MemType::ConventionalMemory as u32},
             MemMap{start: 0x1200000, end: 0x1500000,  mem_type: MemType::LoaderCode as u32},
-            MemMap{start: 0x1500000, end: 0x4000000,  mem_type: MemType::ConventionalMemory as u32},
+            MemMap{start: 0x1500000, end: 0x20000000, mem_type: MemType::ConventionalMemory as u32},
+            MemMap{start: 0x20000000, end: 0x20010000, mem_type: MemType::MMIO as u32},
         ];
 
         let mut memmap_bytes = MemMapHeader{

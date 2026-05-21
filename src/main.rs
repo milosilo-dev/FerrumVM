@@ -23,7 +23,7 @@ fn main() {
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
-            mem_size: 64 * 1024 * 1024,
+            mem_size: 512 * 1024 * 1024,
             mem_offset: 0x0000,
         }],
         binaries: vec![
@@ -38,9 +38,9 @@ fn main() {
             IODeviceRegion::new(0x70..=0x71, cmos),
         ],
         mmio_devices: vec![
-            MMIODeviceRegion::new(0x10001000..=0x10001FFF, rng),
-            MMIODeviceRegion::new(0x10002000..=0x10002FFF, cnt),
-            MMIODeviceRegion::new(0x10003000..=0x10003FFF, blk),
+            MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
+            MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
+            MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
             MMIODeviceRegion::new(0xE0000000..=0xE1000000, pci),
         ],
         irq_map: IrqMap::default_map(),
