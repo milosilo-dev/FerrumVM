@@ -70,6 +70,7 @@ static void apply_relocations(uint8_t* load_base, IMAGE_NT_HEADERS64* nt) {
 }
 
 void format_pe(uint8_t* exe) {
+
     EFI_IMAGE_DOS_HEADER* dos = (EFI_IMAGE_DOS_HEADER*)exe;
 
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) {

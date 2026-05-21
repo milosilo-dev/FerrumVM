@@ -4,7 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-static Virtqueue blk_queue __attribute__((aligned(4096)));
+static volatile Virtqueue blk_queue __attribute__((aligned(4096)));
+
+// Ensure all previous writes (especially avail.idx) are visible
+// to other agents before the MMIO kick is observed.
+static inline void virtio_mb(void) {
+    __asm__ volatile("mfence" ::: "memory");
+}
 static uint16_t  blk_next_desc = 0;
 static uint16_t  blk_avail_idx = 0;
 static uint16_t blk_last_used = 0;
@@ -82,7 +88,7 @@ uint8_t virtio_blk_read(uint64_t sector, uint32_t length, uint8_t* buf) {
     blk_avail_idx++;
     __asm__ volatile("" ::: "memory");
     blk_queue.avail.idx = blk_avail_idx;
-
+    virtio_mb();
     mmio_write(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 0);
 
     uint32_t ready = mmio_read(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_READY);
@@ -91,7 +97,7 @@ uint8_t virtio_blk_read(uint64_t sector, uint32_t length, uint8_t* buf) {
     }
 
     while (blk_queue.used.idx == blk_last_used) {
-        __asm__ volatile("pause");
+        __asm__ volatile("pause" ::: "memory");
     }
 
     uint32_t written = blk_queue.used.ring[blk_last_used % QUEUE_SIZE].len;
@@ -131,7 +137,7 @@ uint8_t virtio_blk_write(uint64_t sector, uint32_t length, uint8_t* buf) {
     blk_avail_idx++;
     __asm__ volatile("" ::: "memory");
     blk_queue.avail.idx = blk_avail_idx;
-
+    virtio_mb();
     mmio_write(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 0);
 
     uint32_t ready = mmio_read(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_READY);

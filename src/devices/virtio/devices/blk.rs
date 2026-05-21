@@ -66,6 +66,25 @@ impl VirtioDevice for BlkVirtio {
             let header = queue.get_descriptor(&guest_memory, head);
 
             if header.flags & 1 == 0 { // Next
+                eprintln!("virtio-blk: head={}, addr=0x{:x}, len={}, flags=0x{:x}, next={}",
+                    head, header.addr, header.len, header.flags, header.next);
+                eprintln!("virtio-blk: desc_addr=0x{:x}, avail_addr=0x{:x}, used_addr=0x{:x}",
+                    queue.desc_addr, queue.avail_addr, queue.used_addr);
+                eprintln!("virtio-blk: last_avail_idx={}, queue.size={}, queue.ready={}",
+                    queue.last_avail_idx, queue.size, queue.ready);
+                let avail_idx = guest_memory.read_u16(queue.avail_addr + 2);
+                eprintln!("virtio-blk: avail_idx={}", avail_idx);
+                for i in 0..16 {
+                    let off = 4 + i * 2;
+                    let v = guest_memory.read_u16(queue.avail_addr + off);
+                    eprintln!("virtio-blk:   ring[{}] = {}", i, v);
+                }
+                // Dump descriptor table first 8 entries
+                for i in 0..8 {
+                    let d = queue.get_descriptor(&guest_memory, i);
+                    eprintln!("virtio-blk:   desc[{}] addr=0x{:x} len={} flags={} next={}",
+                        i, d.addr, d.len, d.flags, d.next);
+                }
                 panic!("virtio-blk got inncorect header");
             }
 

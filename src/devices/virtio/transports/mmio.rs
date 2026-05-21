@@ -61,10 +61,23 @@ impl MMIODevice for MMIOTransport {
             0x028 => {},
             0x030 => self.queue_sel = data[data.len() - 1] as usize,
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
-            0x044 => self.queues[self.queue_sel].ready = data[0] != 0,
+            0x044 => {
+                let was_ready = self.queues[self.queue_sel].ready;
+                self.queues[self.queue_sel].ready = data[0] != 0;
+                if !was_ready && data[0] != 0 {
+                    self.queues[self.queue_sel].last_avail_idx = 0;
+                }
+            },
             0x060 => {},
             0x070 => {
-                self.status = read_u32_from_data(data);
+                let val = read_u32_from_data(data);
+                if val == 0 {
+                    for q in &mut self.queues {
+                        *q = VirtioQueue::new();
+                    }
+                    self.interrupt_status = 0;
+                }
+                self.status = val;
             },
             0x080 => {
                 let val = read_u32_from_data(data) as u64;

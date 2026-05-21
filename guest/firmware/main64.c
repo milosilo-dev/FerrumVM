@@ -12,7 +12,14 @@
 #include "headers/gdt.h"
 #include "headers/halt.h"
 
+extern uint8_t __bss_start[];
+extern uint8_t __bss_end[];
+
 void c_main_64(void) {
+    // Zero BSS
+    for (uint8_t* p = __bss_start; p < __bss_end; p++)
+        *p = 0;
+
     uint64_t rsp;
     __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
     serial_puts("c_main_64 rsp=");
@@ -101,6 +108,26 @@ void c_main_64(void) {
     serial_puts("\n");
 
     print_stack_usage();
+
+    // Dump avail ring state after all firmware reads
+    serial_puts("blk_avail_idx=");
+    serial_putx(blk_avail_idx);
+    serial_puts(" avail.idx=");
+    serial_putx(blk_queue.avail.idx);
+    serial_puts("\n");
+    serial_puts("avail ring:\n");
+    for (int i = 0; i < 16; i++) {
+        serial_puts("  [");
+        serial_putx(i);
+        serial_puts("]=");
+        serial_putx(blk_queue.avail.ring[i]);
+        serial_puts("\n");
+    }
+
+    // Disable the queue so the tick thread stops processing.
+    // This prevents a race where Limine's PE code could overwrite
+    // the avail ring during concurrent tick-thread processing.
+    mmio_write(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_READY, 0);
 
     format_pe(file_buf);
 

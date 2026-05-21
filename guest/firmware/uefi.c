@@ -78,27 +78,25 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
 
 // Heap mem
 
+// ── page allocator for efi_AllocatePages ────────────────────────────
+// Uses the existing heap-based malloc (same as AllocatePool) so that
+// allocated pages are safely inside the heap region (0x3000000-0x4000000)
+// and never collide with firmware page-tables, memory-map data, or
+// low-memory areas.
+#define PG_LIMIT 0x20000000ULL  // end of our memory slot (512 MB)
+static uint64_t pg_bump = 0x4000000ULL;  // start after heap (64 MB)
+
 static EFI_STATUS EFIAPI efi_AllocatePool(
     EFI_MEMORY_TYPE type,
     UINTN size,
     VOID **out
 ) {
-    serial_puts("AllocatePool type=");
-    serial_putx(type);
-    serial_puts(" size=");
-    serial_putx(size);
-    serial_puts("\n");
-
+    serial_puts("[EFI] AlloactePool\n");
     void* ptr = malloc(size);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
     memset(ptr, 0, size);
     *out = ptr;
-    
-    serial_puts("AllocatePool result=");
-    serial_putx((uint64_t)ptr);
-    serial_puts("\n");
     map_key++;
-
     return EFI_SUCCESS;
 }
 
@@ -108,26 +106,39 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     UINTN pages,
     EFI_PHYSICAL_ADDRESS *memory
 ) {
-    serial_puts("AllocatePages type=");
-    serial_putx(type);
-    serial_puts(" memory_type=");
-    serial_putx(memory_type);
-    serial_puts(" pages=");
-    serial_putx(pages);
-    serial_puts(" requested=");
-    serial_putx((uint64_t)*memory);
-    serial_puts("\n");
-
-    void* ptr = malloc(pages * 4096);
-    if (!ptr) return EFI_OUT_OF_RESOURCES;
-    memset(ptr, 0, pages * 4096);
-    *memory = (EFI_PHYSICAL_ADDRESS)ptr;
-
-    serial_puts("AllocatePages result=");
-    serial_putx((uint64_t)*memory);
-    serial_puts("\n");
+    serial_puts("[EFI] AlloactePages\n");
+    uint64_t size = pages * 4096;
+    uint64_t addr;
+    switch (type) {
+    case AllocateAddress: {
+        // Check that the requested address is within the memory slot and
+        // outside the firmware's private low-memory region (< 4 MB).
+        // The firmware uses 0x0–0x7FFFF for page tables, stage2, memmap, etc.
+        // and 0x100000–0x1257000 for its main64 + PE loader.
+        // Allow anything at or above 0x800000 (8 MB) as safe conventional RAM.
+        addr = *memory;
+        if (addr < 0x800000ULL || addr + size > PG_LIMIT)
+            return EFI_OUT_OF_RESOURCES;
+        break;
+    }
+    case AllocateMaxAddress: {
+        uint64_t max = *memory;
+        if (max < size) return EFI_OUT_OF_RESOURCES;
+        addr = (max - size) & ~0xFFFULL;
+        if (addr < pg_bump) addr = pg_bump;
+        break;
+    }
+    case AllocateAnyPages:
+    default:
+        addr = pg_bump;
+        pg_bump += size;
+        if (addr + size > PG_LIMIT)
+            return EFI_OUT_OF_RESOURCES;
+        break;
+    }
     map_key++;
-
+    *memory = addr;
+    memset((void*)(uintptr_t)addr, 0, size);
     return EFI_SUCCESS;
 }
 
