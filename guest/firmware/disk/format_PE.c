@@ -12,6 +12,13 @@ typedef struct {
 #define IMAGE_REL_BASED_ABSOLUTE 0
 #define IMAGE_REL_BASED_DIR64    10
 
+static void dump_ptr(const char* name, void* ptr) {
+    serial_puts(name);
+    serial_puts(" = 0x");
+    serial_putx((uint64_t)ptr);
+    serial_puts("\n");
+}
+
 static void apply_relocations(uint8_t* load_base, IMAGE_NT_HEADERS64* nt) {
     IMAGE_DATA_DIRECTORY* reloc_dir =
         &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
@@ -151,40 +158,28 @@ void format_pe(uint8_t* exe) {
     serial_putx(orig_image_base);
     serial_puts(")\n");
 
-    // The shell reads function pointers from firmware tables that have
-    // stale entries pointing to data instead of valid code. Patch the
-    // entire likely table range in firmware with a small RET-plus-NOP
-    // stub so any entry the shell tries to call will just return.
-    // The firmware data area (0x106xxx-0x107xxx) contains static
-    // UEFI protocol structure instances whose trailing padding can be
-    // misread by the shell as function-pointer tables.
-    serial_puts("pe_exe: patching firmware data pointers to RET stubs\n");
-    uint8_t* fw_data_start = (uint8_t*)0x106000;
-    uint8_t* fw_data_end   = (uint8_t*)0x107F00;
-    // walk 8-byte aligned and replace any value that looks like it
-    // points into the firmware's own data range (0x106xxx-0x107Exx)
-    // with a RET-stub address.
-    uint32_t patched = 0;
-    for (uint8_t* p = fw_data_start; p < fw_data_end; p += 8) {
-        uint64_t val = *(uint64_t*)p;
-        if (val >= 0x106000 && val < 0x108000) {
-            // this pointer targets firmware data — replace target byte with RET
-            uint8_t* tgt = (uint8_t*)val;
-            if (*tgt != 0xC3) {
-                *tgt = 0xC3;
-                patched++;
-            }
-        }
-    }
-    serial_puts("pe_exe: patched ");
-    serial_putx(patched);
-    serial_puts(" firmware data pointers -> RET\n");
-
     // ---- BUILD FAKE UEFI ENV ----
     EFI_SYSTEM_TABLE* system_table = malloc(sizeof(EFI_SYSTEM_TABLE));
     memset(system_table, 0, sizeof(EFI_SYSTEM_TABLE));
     format_system_table(system_table);
     patch_null_stubs();
+    serial_puts("=== EFI TABLE DUMP ===\n");
+
+    dump_ptr("SystemTable",system_table);
+    dump_ptr("BootServices",system_table->BootServices);
+    dump_ptr("RuntimeServices",system_table->RuntimeServices);
+    dump_ptr("ConOut",system_table->ConOut);
+
+    dump_ptr("AllocatePages",system_table->BootServices->AllocatePages);
+    dump_ptr("FreePages",system_table->BootServices->FreePages);
+    dump_ptr("GetMemoryMap",system_table->BootServices->GetMemoryMap);
+    dump_ptr("AllocatePool",system_table->BootServices->AllocatePool);
+    dump_ptr("FreePool",system_table->BootServices->FreePool);
+    dump_ptr("HandleProtocol",system_table->BootServices->HandleProtocol);
+    dump_ptr("LocateProtocol",system_table->BootServices->LocateProtocol);
+    dump_ptr("ExitBootServices",system_table->BootServices->ExitBootServices);
+
+    dump_ptr("OutputString",system_table->ConOut->OutputString);
 
     EFI_IMAGE_HANDLE_DATA* handle_data = malloc(sizeof(EFI_IMAGE_HANDLE_DATA));
     memset(handle_data, 0, sizeof(EFI_IMAGE_HANDLE_DATA));

@@ -48,6 +48,7 @@ static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
 }
 
 STUB(ConReset,        EFI_SUCCESS)
+STUB(TestString,      EFI_SUCCESS)
 STUB(QueryMode,       EFI_SUCCESS)
 STUB(SetMode,         EFI_SUCCESS)
 STUB(SetAttribute,    EFI_SUCCESS)
@@ -65,12 +66,13 @@ static SIMPLE_TEXT_OUTPUT_MODE gConOutMode = {
 };
 
 static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
-    .Reset        = (void*)stub_ConReset,
-    .OutputString = efi_output_string,
-    .QueryMode    = (void*)stub_QueryMode,
-    .SetMode      = (void*)stub_SetMode,
-    .SetAttribute = (void*)stub_SetAttribute,
-    .ClearScreen  = (void*)stub_ClearScreen,
+    .Reset          = (void*)stub_ConReset,
+    .OutputString   = efi_output_string,
+    .TestString     = (void*)stub_TestString,
+    .QueryMode      = (void*)stub_QueryMode,
+    .SetMode        = (void*)stub_SetMode,
+    .SetAttribute   = (void*)stub_SetAttribute,
+    .ClearScreen    = (void*)stub_ClearScreen,
     .SetCursorPosition  = (void*)stub_SetCursorPosition,
     .EnableCursor       = (void*)stub_EnableCursor,
     .Mode               = &gConOutMode,

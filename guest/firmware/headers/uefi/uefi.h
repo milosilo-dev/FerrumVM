@@ -102,7 +102,7 @@ typedef struct {
 struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
     EFI_TEXT_RESET   Reset;
     EFI_TEXT_STRING  OutputString;
-    void *QueryMode, *SetMode, *SetAttribute, *ClearScreen,
+    void *TestString, *QueryMode, *SetMode, *SetAttribute, *ClearScreen,
          *SetCursorPosition, *EnableCursor, *Mode;
 };
 
