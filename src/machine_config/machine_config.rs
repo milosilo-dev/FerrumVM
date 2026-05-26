@@ -21,7 +21,7 @@ impl MachineConfig {
     pub fn inject_memmap(&mut self) {
         let mem_map: Vec<MemMap> = vec![
             // Conventional low RAM (IVT, BDA, free conventional)
-            MemMap { start: 0x00000,    end: 0x9EFFF,    mem_type: MemType::ConventionalMemory as u32 },
+            MemMap { start: 0x00000,    end: 0x9EFFF,    mem_type: MemType::Reserved as u32 },
             // EBDA
             MemMap { start: 0x9F000,    end: 0x9FFFF,    mem_type: MemType::ACPIReclaimMemory as u32 },
             // VGA framebuffer + option ROMs — KVM does NOT back these with RAM
@@ -35,7 +35,11 @@ impl MachineConfig {
             // Whatever lives here (Limine loaded? Reserved?)
             MemMap { start: 0x1200000,  end: 0x14FFFFF,  mem_type: MemType::Reserved as u32 },
             // More free RAM
-            MemMap { start: 0x1500000,  end: 0x1FEFFFFF, mem_type: MemType::ConventionalMemory as u32 },
+            MemMap { start: 0x1500000,  end: 0x3000000, mem_type: MemType::ConventionalMemory as u32 },
+            // Boot services Heap
+            MemMap { start: 0x3000000, end: 0x4000000, mem_type: MemType::BootServicesData as u32 },
+            // More free RAM
+            MemMap { start: 0x4000000, end: 0x1FEFFFFF, mem_type: MemType::ConventionalMemory as u32},
             // MMIO
             MemMap { start: 0x20000000, end: 0x2000FFFF, mem_type: MemType::MMIO as u32 },
         ];

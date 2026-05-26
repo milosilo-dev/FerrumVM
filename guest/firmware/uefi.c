@@ -47,14 +47,20 @@ static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
     return EFI_SUCCESS;
 }
 
+static EFI_STATUS EFIAPI stub_SetCursorPosition() {
+    return EFI_SUCCESS;
+}
+
+static EFI_STATUS EFIAPI stub_EnableCursor() {
+    return EFI_SUCCESS;
+}
+
 STUB(ConReset,        EFI_SUCCESS)
 STUB(TestString,      EFI_SUCCESS)
 STUB(QueryMode,       EFI_SUCCESS)
 STUB(SetMode,         EFI_SUCCESS)
 STUB(SetAttribute,    EFI_SUCCESS)
 STUB(ClearScreen,     EFI_SUCCESS)
-STUB(SetCursorPosition,     EFI_SUCCESS)
-STUB(EnableCursor,     EFI_SUCCESS)
 
 static SIMPLE_TEXT_OUTPUT_MODE gConOutMode = {
     .MaxMode       = 1,
@@ -138,7 +144,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         }
 
         // Reject low firmware/private regions
-        if (addr < 0x200000ULL) {
+        if (addr < 0x200000ULL && addr >= 0x9EFFFULL) {
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
@@ -148,8 +154,10 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
-
-        break;
+        *memory = addr;
+        map_key++;
+        serial_puts(" ret=EFI_SUCCESS\n");
+        return EFI_SUCCESS;  // ← return here, never reach memset
     }
 
     case AllocateMaxAddress: {
@@ -311,7 +319,6 @@ static EFI_STATUS efi_GetVariable(
 ) {
     serial_puts("[EFI] GetVarible name='");
     for (int i = 0; i < 10; i++) {
-        serial_puts("uh");
         serial_putc(VariableName[i]);
     }
     serial_puts("'\n");

@@ -44,9 +44,9 @@ uint32_t memmap_to_uefi(EFI_MEMORY_DESCRIPTOR* buf, uint32_t length) {
         max_entries = memmap_length;
     }
 
-    serial_puts("mem_map: length = ");
-    serial_putx(max_entries);
-    serial_puts("\n");
+    //serial_puts("mem_map: length = ");
+    //serial_putx(max_entries);
+    //serial_puts("\n");
 
     for (uint32_t i = 0; i < max_entries; i++) {
         MemMapEntry* entry =
@@ -75,6 +75,7 @@ uint32_t memmap_to_uefi(EFI_MEMORY_DESCRIPTOR* buf, uint32_t length) {
         // You probably want WB cacheable memory
         buf[out].Attribute = EFI_MEMORY_WB;
 
+        /*
         serial_puts("mem_map: Entry ");
         serial_putx(out);
 
@@ -88,6 +89,7 @@ uint32_t memmap_to_uefi(EFI_MEMORY_DESCRIPTOR* buf, uint32_t length) {
         serial_putx(buf[out].Type);
 
         serial_puts("\n");
+        */
 
         out++;
     }
