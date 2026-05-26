@@ -106,39 +106,108 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     UINTN pages,
     EFI_PHYSICAL_ADDRESS *memory
 ) {
-    serial_puts("[EFI] AlloactePages\n");
-    uint64_t size = pages * 4096;
-    uint64_t addr;
+    (void)memory_type;
+
+    serial_puts("[EFI] AllocatePages type=0x");
+    serial_putx(type);
+    serial_puts(" pages=0x");
+    serial_putx(pages);
+
+    if (pages == 0 || memory == NULL) {
+        serial_puts(" ret=EFI_INVALID_PARAMETER\n");
+        return EFI_INVALID_PARAMETER;
+    }
+
+    uint64_t size = pages * 4096ULL;
+    uint64_t addr = 0;
+
     switch (type) {
+
     case AllocateAddress: {
-        // Check that the requested address is within the memory slot and
-        // outside the firmware's private low-memory region (< 4 MB).
-        // The firmware uses 0x0–0x7FFFF for page tables, stage2, memmap, etc.
-        // and 0x100000–0x1257000 for its main64 + PE loader.
-        // Allow anything at or above 0x800000 (8 MB) as safe conventional RAM.
         addr = *memory;
-        if (addr < 0x800000ULL || addr + size > PG_LIMIT)
+
+        serial_puts(" requested=0x");
+        serial_putx(addr);
+
+        // Must be page aligned
+        if (addr & 0xFFFULL) {
+            serial_puts(" ret=EFI_INVALID_PARAMETER\n");
+            return EFI_INVALID_PARAMETER;
+        }
+
+        // Reject low firmware/private regions
+        if (addr < 0x200000ULL) {
+            serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
+        }
+
+        // Bounds check
+        if (addr + size > PG_LIMIT) {
+            serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            return EFI_OUT_OF_RESOURCES;
+        }
+
         break;
     }
+
     case AllocateMaxAddress: {
         uint64_t max = *memory;
-        if (max < size) return EFI_OUT_OF_RESOURCES;
-        addr = (max - size) & ~0xFFFULL;
-        if (addr < pg_bump) addr = pg_bump;
-        break;
-    }
-    case AllocateAnyPages:
-    default:
-        addr = pg_bump;
-        pg_bump += size;
-        if (addr + size > PG_LIMIT)
+
+        if (max < size) {
+            serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
+        }
+
+        addr = (max - size) & ~0xFFFULL;
+
+        // Keep above reserved region
+        if (addr < 0x200000ULL) {
+            addr = 0x200000ULL;
+        }
+
+        if (addr + size > PG_LIMIT) {
+            serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            return EFI_OUT_OF_RESOURCES;
+        }
+
+        serial_puts(" returned=0x");
+        serial_putx(addr);
+
         break;
     }
-    map_key++;
+
+    case AllocateAnyPages:
+    default: {
+
+        // ALWAYS align before use
+        addr = (pg_bump + 0xFFFULL) & ~0xFFFULL;
+
+        serial_puts(" returned=0x");
+        serial_putx(addr);
+
+        // Check BEFORE modifying allocator state
+        if (addr + size > PG_LIMIT) {
+            serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            return EFI_OUT_OF_RESOURCES;
+        }
+
+        // Advance allocator ONLY on success
+        pg_bump = addr + size;
+
+        break;
+    }
+    }
+
     *memory = addr;
-    memset((void*)(uintptr_t)addr, 0, size);
+
+    // Only successful allocations change map key
+    map_key++;
+
+    // Zero allocated memory
+    memset((void *)(uintptr_t)addr, 0, size);
+
+    serial_puts(" ret=EFI_SUCCESS\n");
+
     return EFI_SUCCESS;
 }
 
