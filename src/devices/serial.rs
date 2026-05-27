@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{self, Stdout, Write, stdin, stdout},
+    io::{self, Write, stdin, stdout},
     sync::{Arc, Mutex},
 };
 
@@ -9,7 +9,7 @@ use crate::{
     irq::handler::{IRQCommand, IRQHandler},
 };
 
-use termion::{event::Key, raw::RawTerminal};
+use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
