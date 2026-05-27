@@ -36,12 +36,7 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
-        self.exits += 1;
         let exit = self.vcpu.fd.run().expect("run failed");
-
-        if self.exits <= 5 || self.exits % 50000 == 0 {
-            eprintln!("[dbg] exit #{}: {:?}", self.exits, exit);
-        }
 
         match exit {
             VcpuExit::Hlt => {

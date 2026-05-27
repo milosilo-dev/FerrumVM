@@ -21,6 +21,7 @@ static EFI_STATUS EFIAPI efi_con_in_reset(
     EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
     BOOLEAN ExtendedVerification
 ) {
+    serial_puts("[STUB] ConInReset");
     return EFI_SUCCESS;
 }
 
@@ -30,6 +31,7 @@ static EFI_STATUS EFIAPI efi_read_key_stroke(
 ) {
     Key->ScanCode    = 0;
     Key->UnicodeChar = 0;
+    serial_puts("[STUB] ReadKeyStroke");
     return EFI_NOT_READY;
 }
 
