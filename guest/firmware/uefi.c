@@ -20,6 +20,13 @@ static EFI_STATUS EFIAPI stub_Null() {
 
 static uint64_t map_key = 1;
 
+void update_events() {
+    if (serial_isdata()) {
+        serial_puts("update");
+        gConIn.WaitForKey->signaled = true;
+    }
+}
+
 // ── con out ───────────────────────────────────────────────────────
 
 static EFI_STATUS EFIAPI efi_output_string(
@@ -369,12 +376,30 @@ static EFI_STATUS EFIAPI efi_GetMemoryMap(uint64_t *MemoryMapSize,
     return EFI_SUCCESS;
 }
 
+static EFI_STATUS EFIAPI efi_WaitForEvent(UINTN NumberOfEvents,
+    EFI_EVENT  *Events,
+    UINTN     *Index) 
+{
+    while (1) {
+        for (UINTN i = 0; i < NumberOfEvents; i++) {
+            struct INTERNAL_EVENT* Event = Events[i];
+            if (Event->signaled) {
+                Event->signaled = 0;
+                *Index = i;
+
+                return EFI_SUCCESS;
+            }
+        }
+        serial_puts("[EFI] WaitForEvent\n");
+        update_events();
+    }
+}
+
 STUB(RaiseTPL,                      EFI_SUCCESS)
 STUB(RestoreTPL,                    EFI_SUCCESS)
 STUB(FreePages,                     EFI_SUCCESS)
 STUB(CreateEvent,                   EFI_SUCCESS)
 STUB(SetTimer,                      EFI_SUCCESS)
-STUB(WaitForEvent,                  EFI_SUCCESS)
 STUB(SignalEvent,                   EFI_SUCCESS)
 STUB(CloseEvent,                    EFI_SUCCESS)
 STUB(CheckEvent,                    EFI_NOT_READY)
@@ -537,7 +562,7 @@ static EFI_BOOT_SERVICES gBootServices = {
     .FreePool                           = (void*)stub_FreePool,
     .CreateEvent                        = (void*)stub_CreateEvent,
     .SetTimer                           = (void*)stub_SetTimer,
-    .WaitForEvent                       = (void*)stub_WaitForEvent,
+    .WaitForEvent                       = (void*)efi_WaitForEvent,
     .SignalEvent                        = (void*)stub_SignalEvent,
     .CloseEvent                         = (void*)stub_CloseEvent,
     .CheckEvent                         = (void*)stub_CheckEvent,
