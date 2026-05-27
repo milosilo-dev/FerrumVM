@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{self, Write},
+    io::{self, Stdout, Write, stdin, stdout},
     sync::{Arc, Mutex},
 };
 
@@ -9,24 +9,48 @@ use crate::{
     irq::handler::{IRQCommand, IRQHandler},
 };
 
+use termion::{event::Key, raw::RawTerminal};
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+
 pub struct Serial {
     data: VecDeque<u8>,
-    new_data: bool,
     irq_handler: Option<Arc<Mutex<IRQHandler>>>,
+    queue: Arc<Mutex<Vec<u8>>>,
 }
 
 impl Serial {
     pub fn new() -> Self {
+        let _ = stdout().into_raw_mode().unwrap();
+        let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
+
+        std::thread::spawn({
+            let queue = queue.clone();
+
+            move || {
+                for key in stdin().keys() {
+                    match key.unwrap() {
+                        Key::Char(c) => {
+                            queue.lock().unwrap().push(c as u8);
+                        }
+                        Key::Ctrl('z') => {
+                            std::process::exit(0);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
         Self {
             data: vec![].into(),
-            new_data: false,
             irq_handler: None,
+            queue,
         }
     }
 
     pub fn set_data(&mut self, new_data: Vec<u8>) {
-        self.data = new_data.into();
-        self.new_data = true;
+        self.data.extend(new_data.iter());
         if self.irq_handler.is_some() {
             let irq_handler = self.irq_handler.as_mut().unwrap();
             irq_handler
@@ -51,7 +75,11 @@ impl IODevice for Serial {
                 out
             }
             5 => {
-                let status = if self.new_data { 0x01 } else { 0x20 };
+                let mut status = 0x20;
+
+                if !self.data.is_empty() {
+                    status |= 0x01;
+                }
                 vec![status; length]
             }
             _ => {
@@ -74,5 +102,12 @@ impl IODevice for Serial {
 
     fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.irq_handler = Some(irq_handler);
+    }
+
+    fn tick(&mut self) {
+        let mut queue = self.queue.lock().unwrap();
+        while let Some(b) = queue.pop() {
+            self.data.push_back(b);
+        }
     }
 }

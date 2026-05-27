@@ -70,3 +70,21 @@ static void __attribute__((noinline)) serial_puts(const char *s) {
         serial_putc(*s++);
     }
 }
+
+static uint32_t __attribute__((noinline)) serial_input(char *buf, uint32_t length) {
+    uint32_t ret_len = 0;
+    for (int i = 0; i < length; i++) {
+        if (inb(COM1 + 5) & 0x20 == 0) {
+            break;
+        }
+
+        uint8_t b = inb(COM1);
+        buf[i] = b;
+        ret_len++;
+    }
+    return ret_len;
+}
+
+static bool __attribute__((noinline)) serial_isdata() {
+    return inb(COM1 + 5) & 0x20 == 0;
+}
