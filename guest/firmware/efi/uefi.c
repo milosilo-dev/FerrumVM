@@ -4,6 +4,7 @@
 #include "../headers/uefi/config_table.h"
 #include "../headers/uefi/stip.h"
 #include "../mem/heap.c"
+#include "blockio.c"
 
 #define TSC_MHZ 3000
 
@@ -726,6 +727,10 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
     efi_register_protocol(image_handle,
                           &gEfiLoadedImageProtocolGuid2,
                           gLoadedImageInstance);
+    
+    efi_register_protocol(gDiskHandle,
+                        &gEfiBlockIoProtocolGuid,
+                        (EFI_HANDLE)&gBlockIo);
 
     // config table + system table CRC
     format_config_table();
