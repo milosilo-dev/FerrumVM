@@ -1,7 +1,7 @@
 #include "../headers/pe_exe.h"
 #include "../headers/uefi/uefi.h"
 #include "../headers/uefi/image_handle.h"
-#include "../uefi.c"
+#include "../efi/uefi.c"
 
 // Base relocation block header
 typedef struct {
@@ -197,6 +197,8 @@ void format_pe(uint8_t* exe) {
     serial_puts("pe_exe: jumping to = ");
     serial_putx(ep);
     serial_puts("\n");
+
+    efi_init(system_table, image_handle);
 
     // ---- DEBUG SAFE DIRECTORY DUMP ----
     uint32_t dir_count = nt->OptionalHeader.NumberOfRvaAndSizes;

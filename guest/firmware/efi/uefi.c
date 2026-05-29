@@ -1,9 +1,9 @@
-#include "headers/uefi/uefi.h"
-#include "headers/serial.h"
-#include "headers/uefi/crc32.h"
-#include "headers/uefi/config_table.h"
-#include "headers/uefi/stip.h"
-#include "mem/heap.c"
+#include "../headers/uefi/uefi.h"
+#include "../headers/serial.h"
+#include "../headers/uefi/crc32.h"
+#include "../headers/uefi/config_table.h"
+#include "../headers/uefi/stip.h"
+#include "../mem/heap.c"
 
 #define TSC_MHZ 3000
 
@@ -278,6 +278,17 @@ static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
     return NULL;
 }
 
+void efi_register_protocol(EFI_HANDLE handle, EFI_GUID *guid, void *iface) {
+    if (gProtocolCount >= MAX_PROTOCOLS) {
+        serial_puts("[EFI] Protocol DB full!\n");
+        return;
+    }
+    gProtocolDB[gProtocolCount].handle = handle;
+    gProtocolDB[gProtocolCount].guid   = *guid;
+    gProtocolDB[gProtocolCount].iface  = iface;
+    gProtocolCount++;
+}
+
 static EFI_STATUS EFIAPI efi_LocateProtocol(
     EFI_GUID *guid, VOID *reg, VOID **iface
 ) {
@@ -456,77 +467,30 @@ static int gFakeHandleData;
 static EFI_HANDLE gFakeHandle = (EFI_HANDLE)&gFakeHandleData;
 
 static EFI_STATUS EFIAPI efi_HandleProtocol(
-    EFI_HANDLE handle,
-    EFI_GUID*  protocol,
-    VOID**     interface
+    EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface
 ) {
     serial_puts("[STUB] HandleProtocol\n");
-    if (handle != NULL) {
-        // check protocol database first
-        void* found = efi_find_protocol(handle, protocol);
-        if (found) {
-            *interface = found;
-            return EFI_SUCCESS;
-        }
-        // special: LoadedImageProtocol
-        if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
-            *interface = gLoadedImageInstance;
-            serial_puts("  -> real LoadedImageProtocol\n");
-            return EFI_SUCCESS;
-        }
-        uint64_t* proto = malloc(16 * sizeof(uint64_t));
-        if (!proto) {
-            *interface = NULL;
-            return EFI_OUT_OF_RESOURCES;
-        }
-        for (int i = 0; i < 16; i++)
-            proto[i] = (uint64_t)stub_Null;
-        *interface = proto;
+    if (!handle || !interface) return EFI_INVALID_PARAMETER;
+
+    void* found = efi_find_protocol(handle, protocol);
+    if (found) { *interface = found; return EFI_SUCCESS; }
+
+    if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
+        *interface = gLoadedImageInstance;
+        serial_puts("  -> real LoadedImageProtocol\n");
         return EFI_SUCCESS;
     }
+
     *interface = NULL;
-    return EFI_NOT_FOUND;
+    return EFI_UNSUPPORTED;
 }
 
 static EFI_STATUS EFIAPI efi_OpenProtocol(
-    EFI_HANDLE handle,
-    EFI_GUID*  protocol,
-    VOID**     interface,
-    EFI_HANDLE agent,
-    EFI_HANDLE controller,
-    UINT32     attributes
+    EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface,
+    EFI_HANDLE agent, EFI_HANDLE controller, UINT32 attributes
 ) {
-    serial_puts("[STUB] OpenProtocol handle=");
-    serial_putx((uint64_t)handle);
-    serial_puts(" guid=");
-    serial_putx(protocol->Data1); serial_putc('-');
-    serial_putx(protocol->Data2); serial_putc('-');
-    serial_putx(protocol->Data3);
-    serial_puts("\n");
-    if (handle != NULL) {
-        // check protocol database first
-        void* found = efi_find_protocol(handle, protocol);
-        if (found) {
-            *interface = found;
-            return EFI_SUCCESS;
-        }
-        if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
-            *interface = gLoadedImageInstance;
-            serial_puts("  -> real LoadedImageProtocol\n");
-            return EFI_SUCCESS;
-        }
-        uint64_t* proto = malloc(16 * sizeof(uint64_t));
-        if (!proto) {
-            *interface = NULL;
-            return EFI_OUT_OF_RESOURCES;
-        }
-        for (int i = 0; i < 16; i++)
-            proto[i] = (uint64_t)stub_Null;
-        *interface = proto;
-        return EFI_SUCCESS;
-    }
-    *interface = NULL;
-    return EFI_NOT_FOUND;
+    serial_puts("[STUB] OpenProtocol\n");
+    return efi_HandleProtocol(handle, protocol, interface);
 }
 
 static EFI_STATUS EFIAPI efi_LocateHandleBuffer(
@@ -549,12 +513,39 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
     EFI_LOCATE_SEARCH_TYPE type,
     EFI_GUID *guid,
     VOID *key,
-    UINTN *count,
-    EFI_HANDLE *buf
+    UINTN *BufferSize,
+    EFI_HANDLE *Buffer
 ) {
-    serial_puts("[STUB] LocateHandle\n");
-    if (count) *count = 1;
-    if (buf)  buf[0] = gFakeHandle;
+    if (!BufferSize) return EFI_INVALID_PARAMETER;
+
+    // Collect unique handles that have this protocol
+    EFI_HANDLE matches[MAX_PROTOCOLS];
+    UINTN      nmatches = 0;
+
+    for (UINTN i = 0; i < gProtocolCount; i++) {
+        if (!efi_guid_match(&gProtocolDB[i].guid, guid)) continue;
+        // deduplicate handles
+        bool already = false;
+        for (UINTN j = 0; j < nmatches; j++)
+            if (matches[j] == gProtocolDB[i].handle) { already = true; break; }
+        if (!already)
+            matches[nmatches++] = gProtocolDB[i].handle;
+    }
+
+    if (nmatches == 0) {
+        *BufferSize = 0;
+        return EFI_NOT_FOUND;
+    }
+
+    UINTN required = nmatches * sizeof(EFI_HANDLE);
+    if (Buffer == NULL || *BufferSize < required) {
+        *BufferSize = required;
+        return EFI_BUFFER_TOO_SMALL;
+    }
+
+    *BufferSize = required;
+    for (UINTN i = 0; i < nmatches; i++)
+        Buffer[i] = matches[i];
     return EFI_SUCCESS;
 }
 
@@ -728,4 +719,18 @@ void format_handle_data(EFI_IMAGE_HANDLE_DATA* handle_data, EFI_SYSTEM_TABLE *st
     handle_data->loaded_image.ImageBase   = load_base;
     handle_data->loaded_image.ImageSize   = image_size;
     handle_data->loaded_image.SystemTable = st;
+}
+
+void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
+    // LoadedImage on the image handle
+    efi_register_protocol(image_handle,
+                          &gEfiLoadedImageProtocolGuid2,
+                          gLoadedImageInstance);
+
+    // config table + system table CRC
+    format_config_table();
+    st->ConfigurationTable   = gConfigTables;
+    st->NumberOfTableEntries = 2;
+    st->Hdr.CRC32 = 0;
+    st->Hdr.CRC32 = crc32((uint8_t*)st, st->Hdr.HeaderSize);
 }
