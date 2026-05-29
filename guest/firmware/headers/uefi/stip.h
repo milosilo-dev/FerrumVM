@@ -29,14 +29,24 @@ static EFI_STATUS EFIAPI efi_read_key_stroke(
     EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
     EFI_INPUT_KEY *Key
 ) {
+    if (!serial_isdata()) {
+        Key->ScanCode    = 0;
+        Key->UnicodeChar = 0;
+        serial_puts("[DBG] ReadKeyStroke: no data\n");
+        return EFI_NOT_READY;
+    }
     Key->ScanCode    = 0;
-    Key->UnicodeChar = 0;
-    serial_puts("[STUB] ReadKeyStroke");
-    return EFI_NOT_READY;
+    Key->UnicodeChar = inb(COM1);
+    serial_puts("[DBG] ReadKeyStroke: got char=");
+    serial_putx(Key->UnicodeChar);
+    serial_puts("\n");
+    return EFI_SUCCESS;
 }
+
+static INTERNAL_EVENT gConInWaitEvent;
 
 static EFI_SIMPLE_TEXT_INPUT_PROTOCOL gConIn = {
     .Reset         = efi_con_in_reset,
     .ReadKeyStroke = efi_read_key_stroke,
-    .WaitForKey    = NULL,
+    .WaitForKey    = &gConInWaitEvent,
 };

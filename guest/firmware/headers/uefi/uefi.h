@@ -1,11 +1,12 @@
 #pragma once
 #include <stdint.h>
 
-struct INTERNAL_EVENT {
-    uint8_t signaled;
+typedef struct{
+    volatile uint8_t signaled;
     void* notify;
     void* context;
-};
+    uint8_t type;
+} INTERNAL_EVENT;
 
 typedef uint64_t  UINTN;
 typedef int64_t   INTN;
@@ -13,7 +14,7 @@ typedef uint64_t  EFI_STATUS;
 typedef uint64_t  EFI_PHYSICAL_ADDRESS;
 typedef uint64_t  EFI_VIRTUAL_ADDRESS;
 typedef void*     EFI_HANDLE;
-typedef struct INTERNAL_EVENT*     EFI_EVENT;
+typedef INTERNAL_EVENT*     EFI_EVENT;
 typedef uint64_t  EFI_TPL;
 typedef uint32_t  UINT32;
 typedef uint16_t  UINT16;

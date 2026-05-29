@@ -22,7 +22,6 @@ static uint64_t map_key = 1;
 
 void update_events() {
     if (serial_isdata()) {
-        serial_puts("update");
         gConIn.WaitForKey->signaled = true;
     }
 }
@@ -380,17 +379,41 @@ static EFI_STATUS EFIAPI efi_WaitForEvent(UINTN NumberOfEvents,
     EFI_EVENT  *Events,
     UINTN     *Index) 
 {
+    serial_puts("[EFI] WaitForEvent type=0x");
+    serial_putx(Events[0]->type);
+    serial_puts(" length=0x");
+    serial_putx(NumberOfEvents);
+    serial_puts("\n");
+
+    for (UINTN i = 0; i < NumberOfEvents; i++) {
+        serial_puts("event ");
+        serial_putx(i);
+
+        serial_puts(" ptr=");
+        serial_putx((uintptr_t)Events[i]);
+
+        serial_puts(" type=");
+        serial_putx(Events[i]->type);
+
+        serial_puts(" signaled=");
+        serial_putx(Events[i]->signaled);
+
+        serial_puts("\n");
+    }
+
     while (1) {
         for (UINTN i = 0; i < NumberOfEvents; i++) {
-            struct INTERNAL_EVENT* Event = Events[i];
-            if (Event->signaled) {
-                Event->signaled = 0;
-                *Index = i;
+            INTERNAL_EVENT* Event = Events[i];
 
+            if (Event->signaled) {
+                Event->signaled = false;
+                *Index = i;
+                serial_puts("[DBG] WaitForEvent returns idx=");
+                serial_putx(i);
+                serial_puts("\n");
                 return EFI_SUCCESS;
             }
         }
-        serial_puts("[EFI] WaitForEvent\n");
         update_events();
     }
 }

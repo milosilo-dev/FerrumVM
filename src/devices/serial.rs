@@ -1,7 +1,5 @@
 use std::{
-    collections::VecDeque,
-    io::{self, Write, stdin, stdout},
-    sync::{Arc, Mutex},
+    collections::VecDeque, io::{self, Write, stdin, stdout}, os::linux::raw, sync::{Arc, Mutex}
 };
 
 use crate::{
@@ -11,7 +9,7 @@ use crate::{
 
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::raw::IntoRawMode;
+use termion::raw::{IntoRawMode, RawTerminal};
 
 pub struct Serial {
     data: VecDeque<u8>,
@@ -21,11 +19,12 @@ pub struct Serial {
 
 impl Serial {
     pub fn new() -> Self {
-        let _ = stdout().into_raw_mode().unwrap();
+        let raw_terminal = Arc::new(Mutex::new(stdout().into_raw_mode().unwrap()));
         let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
 
         std::thread::spawn({
             let queue = queue.clone();
+            let raw_terminal = raw_terminal.clone();
 
             move || {
                 for key in stdin().keys() {
@@ -34,6 +33,7 @@ impl Serial {
                             queue.lock().unwrap().push(c as u8);
                         }
                         Key::Ctrl('z') => {
+                            drop(raw_terminal.lock().unwrap());
                             std::process::exit(0);
                         }
                         _ => {}
