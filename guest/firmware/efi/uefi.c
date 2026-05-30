@@ -269,7 +269,10 @@ static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
 
 // find first matching protocol in database; returns NULL if not found
 static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
-    serial_puts("[EFI] FindProtocol \n");
+    serial_puts("[EFI] FindProtocol {");
+    serial_putx(guid->Data1);serial_puts("-");
+    serial_putx(guid->Data2);serial_puts("-");
+    serial_putx(guid->Data3);serial_puts("}\n");
     if (!guid) return NULL;
     for (int i = 0; i < gProtocolCount; i++) {
         if (gProtocolDB[i].handle == handle &&
@@ -470,7 +473,10 @@ static EFI_HANDLE gFakeHandle = (EFI_HANDLE)&gFakeHandleData;
 static EFI_STATUS EFIAPI efi_HandleProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface
 ) {
-    serial_puts("[STUB] HandleProtocol\n");
+    serial_puts("[EFI] HandleProtocol {");
+    serial_putx(protocol->Data1);serial_puts("-");
+    serial_putx(protocol->Data2);serial_puts("-");
+    serial_putx(protocol->Data3);serial_puts("}\n");
     if (!handle || !interface) return EFI_INVALID_PARAMETER;
 
     void* found = efi_find_protocol(handle, protocol);
@@ -490,7 +496,7 @@ static EFI_STATUS EFIAPI efi_OpenProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface,
     EFI_HANDLE agent, EFI_HANDLE controller, UINT32 attributes
 ) {
-    serial_puts("[STUB] OpenProtocol\n");
+    serial_puts("[EFI] OpenProtocol\n");
     return efi_HandleProtocol(handle, protocol, interface);
 }
 
@@ -501,7 +507,10 @@ static EFI_STATUS EFIAPI efi_LocateHandleBuffer(
     UINTN *count,
     EFI_HANDLE **buf
 ) {
-    serial_puts("[STUB] LocateHandleBuffer\n");
+    serial_puts("[EFI] LocateHandleBuffer {");
+    serial_putx(guid->Data1);serial_puts("-");
+    serial_putx(guid->Data2);serial_puts("-");
+    serial_putx(guid->Data3);serial_puts("}\n");
     if (!count || !buf) return EFI_INVALID_PARAMETER;
     *count = 1;
     *buf = malloc(sizeof(EFI_HANDLE));
@@ -517,6 +526,11 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
     UINTN *BufferSize,
     EFI_HANDLE *Buffer
 ) {
+    serial_puts("[EFI] LocateHandle {");
+    serial_putx(guid->Data1);serial_puts("-");
+    serial_putx(guid->Data2);serial_puts("-");
+    serial_putx(guid->Data3);serial_puts("}\n");
+
     if (!BufferSize) return EFI_INVALID_PARAMETER;
 
     // Collect unique handles that have this protocol
