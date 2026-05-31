@@ -124,11 +124,6 @@ void c_main_64(void) {
         serial_puts("\n");
     }
 
-    // Disable the queue so the tick thread stops processing.
-    // This prevents a race where Limine's PE code could overwrite
-    // the avail ring during concurrent tick-thread processing.
-    mmio_write(VIRTIO_BLK_BASE, VIRTIO_MMIO_QUEUE_READY, 0);
-
     format_pe(file_buf);
 
     // spin forever

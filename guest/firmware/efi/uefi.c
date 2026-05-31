@@ -48,8 +48,8 @@ static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
     serial_puts("\n");
     volatile uint64_t x = microseconds * 1000;
 
-    while (x--)
-        __asm__ volatile("pause");
+    //while (x--)
+    //    __asm__ volatile("pause");
 
     return EFI_SUCCESS;
 }
