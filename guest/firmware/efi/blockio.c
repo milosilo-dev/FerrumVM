@@ -16,7 +16,8 @@ static EFI_STATUS EFIAPI disk_ReadBlocks(
     UINTN BufferSize,
     VOID *Buffer
 ) {
-    serial_puts("[STUB] Read Blocks\n");
+    serial_puts("[BLOCKIO] Read Blocks\n");
+    virtio_blk_read(lba, BufferSize, Buffer);
     return EFI_SUCCESS;
 }
 
@@ -32,16 +33,19 @@ static EFI_BLOCK_IO_MEDIA gDiskMedia = {
 };
 
 static EFI_STATUS EFIAPI stub_Reset(EFI_BLOCK_IO *This, BOOLEAN ExtendedVerification) {
+    serial_puts("[STUB] Reset\n");
     return EFI_SUCCESS;
 }
 
 static EFI_STATUS EFIAPI stub_WriteBlock(    EFI_BLOCK_IO *This, UINT32 MediaId, EFI_LBA LBA,
     UINTN BufferSize, VOID *Buffer) 
 {
+    serial_puts("[STUB] WriteBlock\n");
     return EFI_SUCCESS;
 }
 
 static EFI_STATUS EFIAPI stub_FlushBlocks(EFI_BLOCK_IO *this) {
+    serial_puts("[STUB] FlushBlocks\n");
     return EFI_SUCCESS;
 }
 
