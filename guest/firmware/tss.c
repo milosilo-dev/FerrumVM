@@ -1,5 +1,5 @@
-#include <stdint.h>
-#include "mem/heap.c"
+#include "tss.h"
+#include "mem/heap.h"
 
 typedef struct {
     uint32_t reserved0;
@@ -47,7 +47,5 @@ void gdt_set_tss(uint64_t* gdt, int selector_index) {
 }
 
 void tss_enable(uint32_t tss_selector) {
-    // selector = byte offset of TSS entry in GDT
-    // e.g. if TSS is at index 3: selector = 3 * 8 = 0x18
     __asm__ volatile("ltr %0" :: "r"((uint16_t)tss_selector));
 }

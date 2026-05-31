@@ -1,6 +1,4 @@
-#pragma once
-#include <stdint.h>
-#include <stddef.h>
+#include "heap.h"
 
 // ── free-list allocator ────────────────────────────────────────────
 // Each allocated block has a header (struct heap_hdr) placed before
@@ -14,8 +12,8 @@ struct heap_hdr {
 };
 
 static struct heap_hdr* free_list;
-static uint8_t*         heap_ptr;
-static uint64_t         heap_end;
+uint8_t*         heap_ptr;
+uint64_t         heap_end;
 static int              initilized;
 
 void init_heap(uint64_t p_start, uint64_t p_end) {

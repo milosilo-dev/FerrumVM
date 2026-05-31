@@ -1,13 +1,11 @@
+#include "blk.h"
 #include "../headers/serial.h"
 #include "../headers/virtio_mmio.h"
 #include "../headers/virtqueue.h"
 #include <stdint.h>
-#include <stdbool.h>
 
 static volatile Virtqueue blk_queue __attribute__((aligned(4096)));
 
-// Ensure all previous writes (especially avail.idx) are visible
-// to other agents before the MMIO kick is observed.
 static inline void virtio_mb(void) {
     __asm__ volatile("mfence" ::: "memory");
 }
@@ -153,4 +151,19 @@ uint8_t virtio_blk_write(uint64_t sector, uint32_t length, uint8_t* buf) {
     blk_last_used++;
 
     return status;
+}
+
+void virtio_blk_dump(void) {
+    serial_puts("blk_avail_idx=");
+    serial_putx(blk_avail_idx);
+    serial_puts(" avail.idx=");
+    serial_putx(blk_queue.avail.idx);
+    serial_puts("\navail ring:\n");
+    for (int i = 0; i < 16; i++) {
+        serial_puts("  [");
+        serial_putx(i);
+        serial_puts("]=");
+        serial_putx(blk_queue.avail.ring[i]);
+        serial_puts("\n");
+    }
 }

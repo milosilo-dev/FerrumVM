@@ -1,32 +1,30 @@
+#include <stdint.h>
+
 #include "headers/serial.h"
-#include "virtio/blk.c"
-#include "headers/idt.h"
-#include "headers/sector_range.h"
-#include "mem/memmap.c"
-#include "mem/heap.c"
-#include "disk/esp.c"
-#include "disk/fat32.c"
-#include "mem/stack.c"
-#include "disk/format_PE.c"
-#include "tss.c"
 #include "headers/gdt.h"
+#include "headers/idt.h"
 #include "headers/halt.h"
+
+#include "tss.h"
+#include "mem/heap.h"
+#include "mem/memmap.h"
+#include "mem/stack.h"
+#include "virtio/blk.h"
+#include "disk/esp.h"
+#include "disk/fat32.h"
+#include "disk/boot.h"
+#include "disk/format_PE.h"
+#include "efi/uefi.h"
 
 extern uint8_t __bss_start[];
 extern uint8_t __bss_end[];
 
-void c_main_64(void) {
-    // Zero BSS
+static void zero_bss(void) {
     for (uint8_t* p = __bss_start; p < __bss_end; p++)
         *p = 0;
+}
 
-    uint64_t rsp;
-    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    serial_puts("c_main_64 rsp=");
-    serial_putx(rsp);
-    serial_puts("\n");
-    serial_puts("=-- Long mode --=\n");
-
+static void init_tss_gdt(void) {
     tss_init();
     gdt_set_tss(gdt64, 5);
     GDTPointer64 gdtp = {
@@ -35,97 +33,49 @@ void c_main_64(void) {
     };
     __asm__ volatile("lgdt %0" :: "m"(gdtp));
     tss_enable(5 * 8);
-    
-    idt_init();
+}
 
+void c_main_64(void) {
+    zero_bss();
+
+    uint64_t rsp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    serial_puts("c_main_64 rsp=");
+    serial_putx(rsp);
+    serial_puts("\n=-- Long mode --=\n");
+
+    init_tss_gdt();
     idt_init();
     init_memmap();
     init_heap(0x3000000, 0x4000000);
     serial_puts("heap after init=");
     serial_putx((uint64_t)heap_ptr);
     serial_puts("\n");
+
     virtio_blk_init();
 
-    SectorRange sec_range;
-    int status = load_part_table(&sec_range);
-    if (status != 0) return;
-
-    static Fat32_Handle fs;
-    status = open_fat32(&sec_range, &fs);
-    if (status != 0) return;
-
-    status = open_root_dir(&fs);
-    if (status != 0) return;
-
-    DirEntry* entry;
-    int found_efi = 0;
-    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
-        if (memcmp(entry->name, "EFI        ", 11) == 0){
-            found_efi = 1;
-            break;
-        }
-    }
-
-    if (!found_efi) {
-        serial_puts("Did not find the EFI dir");
-        return;
-    }
-
-    open_dir_entry(&fs, entry);
-    int found_boot = 0;
-    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
-        if (memcmp(entry->name, "BOOT       ", 11) == 0){
-            found_boot = 1;
-            break;
-        }
-    }
-
-    if (!found_boot) {
-        serial_puts("Did not find the Boot dir");
-        return;
-    }
-
-    open_dir_entry(&fs, entry);
-    int found_exe = 0;
-    while (next_dir_entry(&fs, &entry) == SUCCSESS) {
-        if (memcmp(entry->name, "BOOTX64 EFI", 11) == 0){
-            found_exe = 1;
-            break;
-        }
-    }
-
-    if (!found_exe) {
-        serial_puts("Did not find the BOOTX64 binary");
-        return;
-    }
-
     uint8_t* file_buf = (uint8_t*)0x1000000;
-
-    read_file(&fs, entry, file_buf, entry->file_size);
-    for (int i = 0; i < 10; i++) {
-        serial_putx(file_buf[i]);
+    int status = load_efi_application(file_buf);
+    if (status != 0) {
+        serial_puts("Failed to load EFI application\n");
+        hang();
     }
-    serial_puts("\n");
 
     print_stack_usage();
-
-    // Dump avail ring state after all firmware reads
-    serial_puts("blk_avail_idx=");
-    serial_putx(blk_avail_idx);
-    serial_puts(" avail.idx=");
-    serial_putx(blk_queue.avail.idx);
-    serial_puts("\n");
-    serial_puts("avail ring:\n");
-    for (int i = 0; i < 16; i++) {
-        serial_puts("  [");
-        serial_putx(i);
-        serial_puts("]=");
-        serial_putx(blk_queue.avail.ring[i]);
-        serial_puts("\n");
-    }
+    virtio_blk_dump();
 
     format_pe(file_buf);
-
-    // spin forever
     hang();
 }
+
+#include "mem/heap.c"
+#include "mem/memmap.c"
+#include "mem/stack.c"
+#include "tss.c"
+#include "virtio/blk.c"
+#include "efi/blockio.c"
+#include "disk/esp.c"
+#include "disk/fat32.c"
+#include "efi/uefi.c"
+#include "disk/format_PE.c"
+#include "disk/boot.c"

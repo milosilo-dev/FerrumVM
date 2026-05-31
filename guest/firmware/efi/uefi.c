@@ -1,10 +1,8 @@
-#include "../headers/uefi/uefi.h"
+#include "uefi.h"
 #include "../headers/serial.h"
 #include "../headers/uefi/crc32.h"
-#include "../headers/uefi/config_table.h"
 #include "../headers/uefi/stip.h"
-#include "../mem/heap.c"
-#include "blockio.c"
+#include "../mem/heap.h"
 
 #define TSC_MHZ 3000
 
@@ -229,7 +227,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 }
 
 // ── real loaded-image protocol (set by format_PE before entry) ──
-static EFI_LOADED_IMAGE_PROTOCOL* gLoadedImageInstance = NULL;
+EFI_LOADED_IMAGE_PROTOCOL* gLoadedImageInstance = NULL;
 
 static int efi_guid_match(EFI_GUID* a, EFI_GUID* b) {
     return memcmp(a, b, sizeof(EFI_GUID)) == 0;

@@ -1,6 +1,6 @@
-#include <stdint.h>
+#include "esp.h"
+#include "../headers/serial.h"
 #include "../headers/memcmp.h"
-#include "../headers/sector_range.h"
 #include "../headers/gpt.h"
 #include "../headers/errors.h"
 

@@ -1,7 +1,7 @@
+#include "format_PE.h"
 #include "../headers/pe_exe.h"
-#include "../headers/uefi/uefi.h"
-#include "../headers/uefi/image_handle.h"
-#include "../efi/uefi.c"
+#include "../efi/uefi.h"
+#include "../mem/heap.h"
 
 // Base relocation block header
 typedef struct {

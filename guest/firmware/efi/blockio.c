@@ -2,9 +2,9 @@
 #include "../headers/uefi/blockio.h"
 
 static int gDiskHandleData;
-static EFI_HANDLE gDiskHandle = (EFI_HANDLE)&gDiskHandleData;
+EFI_HANDLE gDiskHandle = (EFI_HANDLE)&gDiskHandleData;
 
-static EFI_GUID gEfiBlockIoProtocolGuid = {
+EFI_GUID gEfiBlockIoProtocolGuid = {
     0x964E5B21, 0x6459, 0x11D2,
     {0x8E, 0x39, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B}
 };
@@ -49,7 +49,7 @@ static EFI_STATUS EFIAPI stub_FlushBlocks(EFI_BLOCK_IO *this) {
     return EFI_SUCCESS;
 }
 
-static EFI_BLOCK_IO gBlockIo = {
+EFI_BLOCK_IO gBlockIo = {
     .Revision    = EFI_BLOCK_IO_PROTOCOL_REVISION,
     .Media       = &gDiskMedia,
     .Reset       = stub_Reset,
