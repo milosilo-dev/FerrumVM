@@ -2,7 +2,7 @@
 #include "../headers/uefi/uefi.h"
 #include "../headers/uefi/image_handle.h"
 #include "../headers/uefi/config_table.h"
-#include "../headers/uefi/blockio.h"
+#include "blockio.h"
 
 extern EFI_GUID gEfiBlockIoProtocolGuid;
 extern EFI_BLOCK_IO gBlockIo;

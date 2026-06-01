@@ -1,5 +1,5 @@
 #pragma once
-#include "uefi.h"
+#include "../headers/uefi/uefi.h"
 
 #define EFI_BLOCK_IO_PROTOCOL_REVISION 0x00010000
 

@@ -1,5 +1,5 @@
 // disk handle — distinct from the fake handle
-#include "../headers/uefi/blockio.h"
+#include "blockio.h"
 
 static int gDiskHandleData;
 EFI_HANDLE gDiskHandle = (EFI_HANDLE)&gDiskHandleData;

@@ -33,7 +33,7 @@ static EFI_STATUS EFIAPI efi_output_string(
 ) {
     while (*String) {
         char c = (char)(*String & 0xFF);
-        if (c == '\n') serial_putc('\r');
+        if (c == '\n') serial_putc('n');
         serial_putc(c);
         String++;
     }
@@ -267,10 +267,6 @@ static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
 
 // find first matching protocol in database; returns NULL if not found
 static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
-    serial_puts("[EFI] FindProtocol {");
-    serial_putx(guid->Data1);serial_puts("-");
-    serial_putx(guid->Data2);serial_puts("-");
-    serial_putx(guid->Data3);serial_puts("}\n");
     if (!guid) return NULL;
     for (int i = 0; i < gProtocolCount; i++) {
         if (gProtocolDB[i].handle == handle &&
@@ -297,12 +293,12 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
     serial_puts("[EFI] LocateProtocol {");
     serial_putx(guid->Data1); serial_puts("-");
     serial_putx(guid->Data2); serial_puts("-");
-    serial_putx(guid->Data3); serial_puts("}\n");
+    serial_putx(guid->Data3); serial_puts("} ret=");
 
     // return the real LoadedImageProtocol if requested
     if (gLoadedImageInstance && efi_guid_match(guid, &gEfiLoadedImageProtocolGuid2)) {
         *iface = gLoadedImageInstance;
-        serial_puts("  -> real LoadedImageProtocol\n");
+        serial_puts("LoadedImageProtocol\n");
         return EFI_SUCCESS;
     }
 
@@ -311,6 +307,7 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
         for (int i = 0; i < gProtocolCount; i++) {
             if (efi_guid_match(&gProtocolDB[i].guid, guid)) {
                 *iface = gProtocolDB[i].iface;
+                serial_puts("efi_sucsess\n");
                 return EFI_SUCCESS;
             }
         }
@@ -320,12 +317,14 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
     uint64_t* proto = malloc(16 * sizeof(uint64_t));
     if (!proto) {
         *iface = NULL;
+        serial_puts("out_of_resources\n");
         return EFI_OUT_OF_RESOURCES;
     }
     for (int i = 0; i < 16; i++)
         proto[i] = (uint64_t)stub_Null;
 
     *iface = proto;
+    serial_puts("efi_sucsess\n");
     return EFI_SUCCESS;
 }
 
@@ -474,19 +473,27 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     serial_puts("[EFI] HandleProtocol {");
     serial_putx(protocol->Data1);serial_puts("-");
     serial_putx(protocol->Data2);serial_puts("-");
-    serial_putx(protocol->Data3);serial_puts("}\n");
-    if (!handle || !interface) return EFI_INVALID_PARAMETER;
+    serial_putx(protocol->Data3);serial_puts("} ret=");
+    if (!handle || !interface) {
+        serial_puts("invalid_param, handle=");
+        serial_putx((uint64_t)handle);
+        serial_puts(", interface=");
+        serial_putx((uint64_t)interface);
+        serial_puts("\n");
+        return EFI_INVALID_PARAMETER;
+    }
 
     void* found = efi_find_protocol(handle, protocol);
-    if (found) { *interface = found; return EFI_SUCCESS; }
+    if (found) { *interface = found; serial_puts("efi_sucsess\n"); return EFI_SUCCESS; }
 
     if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
         *interface = gLoadedImageInstance;
-        serial_puts("  -> real LoadedImageProtocol\n");
+        serial_puts("LoadedImageProtocol\n");
         return EFI_SUCCESS;
     }
 
     *interface = NULL;
+    serial_puts("un-suported\n");
     return EFI_UNSUPPORTED;
 }
 
@@ -527,9 +534,12 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
     serial_puts("[EFI] LocateHandle {");
     serial_putx(guid->Data1);serial_puts("-");
     serial_putx(guid->Data2);serial_puts("-");
-    serial_putx(guid->Data3);serial_puts("}\n");
+    serial_putx(guid->Data3);serial_puts("} ret=");
 
-    if (!BufferSize) return EFI_INVALID_PARAMETER;
+    if (!BufferSize) {
+        serial_puts("invalid_parameter\n");
+        return EFI_INVALID_PARAMETER;
+    }
 
     // Collect unique handles that have this protocol
     EFI_HANDLE matches[MAX_PROTOCOLS];
@@ -547,18 +557,21 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
 
     if (nmatches == 0) {
         *BufferSize = 0;
+        serial_puts("not_found\n");
         return EFI_NOT_FOUND;
     }
 
     UINTN required = nmatches * sizeof(EFI_HANDLE);
     if (Buffer == NULL || *BufferSize < required) {
         *BufferSize = required;
+        serial_puts("buffer_too_small\n");
         return EFI_BUFFER_TOO_SMALL;
     }
 
     *BufferSize = required;
     for (UINTN i = 0; i < nmatches; i++)
         Buffer[i] = matches[i];
+    serial_puts("sucsess\n");
     return EFI_SUCCESS;
 }
 
