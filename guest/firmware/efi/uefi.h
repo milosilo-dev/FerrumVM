@@ -3,6 +3,10 @@
 #include "../headers/uefi/image_handle.h"
 #include "../headers/uefi/config_table.h"
 #include "blockio.h"
+#include "dev_path.h"
+
+extern EFI_GUID gEfiDevicePathProtocolGuid;
+extern EFI_HANDLE gDevicePath;
 
 extern EFI_GUID gEfiBlockIoProtocolGuid;
 extern EFI_BLOCK_IO gBlockIo;

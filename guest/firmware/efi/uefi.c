@@ -757,6 +757,10 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
                         &gEfiBlockIoProtocolGuid,
                         (EFI_HANDLE)&gBlockIo);
 
+    efi_register_protocol(gDevicePath, 
+                        &gEfiDevicePathProtocolGuid, 
+                        (EFI_HANDLE)&gDevicePath);
+
     // config table + system table CRC
     format_config_table();
     st->ConfigurationTable   = gConfigTables;
