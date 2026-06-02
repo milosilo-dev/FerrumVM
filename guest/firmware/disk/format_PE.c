@@ -68,10 +68,6 @@ static void apply_relocations(uint8_t* load_base, IMAGE_NT_HEADERS64* nt) {
             }
         }
 
-        serial_puts("relocations applied=");
-        serial_putx(reloc_count);
-        serial_puts("\n");
-
         reloc_data += block->SizeOfBlock;
     }
 }
@@ -105,22 +101,6 @@ void format_pe(uint8_t* exe) {
         return;
     }
 
-    serial_puts("pe_exe: Sections = ");
-    serial_putx(nt->FileHeader.NumberOfSections);
-    serial_puts("\n");
-
-    serial_puts("pe_exe: ImageBase = ");
-    serial_putx(nt->OptionalHeader.ImageBase);
-    serial_puts("\n");
-
-    serial_puts("pe_exe: SizeOfImage = ");
-    serial_putx(nt->OptionalHeader.SizeOfImage);
-    serial_puts("\n");
-
-    serial_puts("pe_exe: Entry RVA = ");
-    serial_putx(nt->OptionalHeader.AddressOfEntryPoint);
-    serial_puts("\n");
-
     uint8_t* load_base = (uint8_t*)0x1200000;
 
     memcpy(load_base, exe, nt->OptionalHeader.SizeOfHeaders);
@@ -152,34 +132,12 @@ void format_pe(uint8_t* exe) {
     uint64_t orig_image_base = nt->OptionalHeader.ImageBase;
     *((uint64_t*)(load_base + ((uint8_t*)&nt->OptionalHeader.ImageBase - exe))) = (uint64_t)load_base;
     nt->OptionalHeader.ImageBase = (uint64_t)load_base;
-    serial_puts("pe_exe: patched ImageBase to ");
-    serial_putx((uint64_t)load_base);
-    serial_puts(" (was ");
-    serial_putx(orig_image_base);
-    serial_puts(")\n");
 
     // ---- BUILD FAKE UEFI ENV ----
     EFI_SYSTEM_TABLE* system_table = malloc(sizeof(EFI_SYSTEM_TABLE));
     memset(system_table, 0, sizeof(EFI_SYSTEM_TABLE));
     format_system_table(system_table);
     patch_null_stubs();
-    serial_puts("=== EFI TABLE DUMP ===\n");
-
-    dump_ptr("SystemTable",system_table);
-    dump_ptr("BootServices",system_table->BootServices);
-    dump_ptr("RuntimeServices",system_table->RuntimeServices);
-    dump_ptr("ConOut",system_table->ConOut);
-
-    dump_ptr("AllocatePages",system_table->BootServices->AllocatePages);
-    dump_ptr("FreePages",system_table->BootServices->FreePages);
-    dump_ptr("GetMemoryMap",system_table->BootServices->GetMemoryMap);
-    dump_ptr("AllocatePool",system_table->BootServices->AllocatePool);
-    dump_ptr("FreePool",system_table->BootServices->FreePool);
-    dump_ptr("HandleProtocol",system_table->BootServices->HandleProtocol);
-    dump_ptr("LocateProtocol",system_table->BootServices->LocateProtocol);
-    dump_ptr("ExitBootServices",system_table->BootServices->ExitBootServices);
-
-    dump_ptr("OutputString",system_table->ConOut->OutputString);
 
     EFI_IMAGE_HANDLE_DATA* handle_data = malloc(sizeof(EFI_IMAGE_HANDLE_DATA));
     memset(handle_data, 0, sizeof(EFI_IMAGE_HANDLE_DATA));
@@ -194,10 +152,6 @@ void format_pe(uint8_t* exe) {
     // make the real LoadedImageProtocol available to HandleProtocol/OpenProtocol
     gLoadedImageInstance = &handle_data->loaded_image;
 
-    serial_puts("pe_exe: jumping to = ");
-    serial_putx(ep);
-    serial_puts("\n");
-
     efi_init(system_table, image_handle);
 
     // ---- DEBUG SAFE DIRECTORY DUMP ----
@@ -205,48 +159,16 @@ void format_pe(uint8_t* exe) {
     if (dir_count > IMAGE_NUMBEROF_DIRECTORY_ENTRIES)
         dir_count = IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
 
-    serial_puts("=== MEMORY LAYOUT ===\n");
-
     uint64_t rsp;
     __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    serial_puts("stack ptr=");
-    serial_putx(rsp);
-    serial_puts("\n");
-
-    serial_puts("heap start=");
-    serial_putx((uint64_t)heap_ptr);
-    serial_puts("\n");
-
-    serial_puts("heap end=");
-    serial_putx((uint64_t)heap_end);
-    serial_puts("\n");
-
-    serial_puts("PE load base=");
-    serial_putx((uint64_t)load_base);
-    serial_puts("\n");
-    serial_puts("PE end=");
-    serial_putx((uint64_t)load_base + nt->OptionalHeader.SizeOfImage);
-    serial_puts("\n");
-
-    // check overlap
-    uint64_t stack_bottom = rsp - 0x100000; // assume 1MB stack usage max
-    serial_puts("assumed stack bottom=");
-    serial_putx(stack_bottom);
-    serial_puts("\n");
+    uint64_t stack_bottom = rsp - 0x100000;
 
     if ((uint64_t)heap_ptr >= stack_bottom && (uint64_t)heap_ptr <= rsp) {
         serial_puts("ERROR: heap overlaps stack!\n");
     } else if ((uint64_t)load_base + nt->OptionalHeader.SizeOfImage >= (uint64_t)heap_ptr && 
              (uint64_t)load_base < (uint64_t)heap_end) {
         serial_puts("ERROR: heap overlaps PE!\n");
-    } else {
-        serial_puts("OK: no overlap detected\n");
     }
-
-    serial_puts("=== END LAYOUT ===\n");
-    serial_puts("heap before PE=");
-    serial_putx((uint64_t)heap_ptr);
-    serial_puts("\n");
 
     // ---- CALL ENTRY ----
     EFI_STATUS status;

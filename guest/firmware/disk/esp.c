@@ -53,7 +53,6 @@ int load_part_table(SectorRange* range) {
         serial_puts("part-table: Incompatible revision");
         return INVALID_REVSION;
     }
-    serial_puts("part-table: GPT Detected\n");
 
     uint64_t table_lba = gpt_header->partition_entries_lba;
     uint32_t entry_size = gpt_header->partition_entry_size;
@@ -85,12 +84,7 @@ int load_part_table(SectorRange* range) {
         if (empty)
             continue;
 
-        serial_puts("part-table: Entry ");
-        serial_putx(i);
-        serial_puts(" valid\n");
-
         if (memcmp(entry->type_guid, esp_guid, 16) == 0) {
-            serial_puts("part-table: Found EFI System Partition\n");
             range->first_sector = entry->first_lba;
             range->last_sector = entry->last_lba;
             break;

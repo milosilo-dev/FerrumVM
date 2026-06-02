@@ -51,10 +51,5 @@ int load_efi_application(uint8_t* file_buf) {
 
     read_file(&fs, entry, file_buf, entry->file_size);
 
-    for (int i = 0; i < 10; i++) {
-        serial_putx(file_buf[i]);
-    }
-    serial_puts("\n");
-
     return SUCCSESS;
 }

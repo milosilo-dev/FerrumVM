@@ -38,19 +38,10 @@ static void init_tss_gdt(void) {
 void c_main_64(void) {
     zero_bss();
 
-    uint64_t rsp;
-    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    serial_puts("c_main_64 rsp=");
-    serial_putx(rsp);
-    serial_puts("\n=-- Long mode --=\n");
-
     init_tss_gdt();
     idt_init();
     init_memmap();
     init_heap(0x3000000, 0x4000000);
-    serial_puts("heap after init=");
-    serial_putx((uint64_t)heap_ptr);
-    serial_puts("\n");
 
     virtio_blk_init();
 
@@ -60,8 +51,6 @@ void c_main_64(void) {
         serial_puts("Failed to load EFI application\n");
         hang();
     }
-
-    print_stack_usage();
     virtio_blk_dump();
 
     format_pe(file_buf);

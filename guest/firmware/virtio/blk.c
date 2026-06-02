@@ -45,8 +45,6 @@ void virtio_blk_init(void){
         | VIRTIO_STATUS_DRIVER
         | VIRTIO_STATUS_FEATURES_OK
         | VIRTIO_STATUS_DRIVER_OK);
-
-    serial_puts("virtio-blk: init done\n");
 }
 
 typedef struct {
@@ -153,17 +151,4 @@ uint8_t virtio_blk_write(uint64_t sector, uint32_t length, uint8_t* buf) {
     return status;
 }
 
-void virtio_blk_dump(void) {
-    serial_puts("blk_avail_idx=");
-    serial_putx(blk_avail_idx);
-    serial_puts(" avail.idx=");
-    serial_putx(blk_queue.avail.idx);
-    serial_puts("\navail ring:\n");
-    for (int i = 0; i < 16; i++) {
-        serial_puts("  [");
-        serial_putx(i);
-        serial_puts("]=");
-        serial_putx(blk_queue.avail.ring[i]);
-        serial_puts("\n");
-    }
-}
+void virtio_blk_dump(void) {}

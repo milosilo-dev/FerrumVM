@@ -21,8 +21,6 @@ static uint32_t memmap_length;
 
 void init_memmap() {
     MemMapHeader* header = (MemMapHeader *)0x7000;
-    serial_puts("mem_map: Mgk num = ");
-    serial_putx(header->mgk_num); serial_puts("\n");
 
     if (header->mgk_num == MEMMAP_MGK_NUM) {
         uint32_t length = header->length;
