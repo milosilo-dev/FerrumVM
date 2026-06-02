@@ -1,6 +1,10 @@
 #include "dev_path.h"
 
-static int gDevicePathData;
+static EFI_DEVICE_PATH_PROTOCOL gDevicePathData = {
+    0x7F,  // END_DEVICE_PATH_TYPE
+    0xFF,  // END_ENTIRE_DEVICE_PATH_SUBTYPE
+    {4,0}
+};
 EFI_HANDLE gDevicePath = (EFI_HANDLE)&gDevicePathData;
 
 EFI_GUID gEfiDevicePathProtocolGuid = {

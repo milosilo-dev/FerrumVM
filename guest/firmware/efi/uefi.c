@@ -473,9 +473,9 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     serial_puts("[EFI] HandleProtocol {");
     serial_putx(protocol->Data1);serial_puts("-");
     serial_putx(protocol->Data2);serial_puts("-");
-    serial_putx(protocol->Data3);serial_puts("} ret=");
+    serial_putx(protocol->Data3);serial_puts("} ");
     if (!handle || !interface) {
-        serial_puts("invalid_param, handle=");
+        serial_puts("ret=invalid_param, handle=");
         serial_putx((uint64_t)handle);
         serial_puts(", interface=");
         serial_putx((uint64_t)interface);
@@ -483,12 +483,19 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
         return EFI_INVALID_PARAMETER;
     }
 
+    serial_puts("DeviceHandle=");
+    serial_putx((uint64_t)gLoadedImageInstance->DeviceHandle);
+    serial_puts(" ret=");
+
     void* found = efi_find_protocol(handle, protocol);
     if (found) { *interface = found; serial_puts("efi_sucsess\n"); return EFI_SUCCESS; }
 
     if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
+        serial_puts("LoadedImage DeviceHandle=");
+        serial_putx((uint64_t)gLoadedImageInstance->DeviceHandle);
+        serial_puts("\n");
+
         *interface = gLoadedImageInstance;
-        serial_puts("LoadedImageProtocol\n");
         return EFI_SUCCESS;
     }
 
@@ -755,11 +762,13 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
     
     efi_register_protocol(gDiskHandle,
                         &gEfiBlockIoProtocolGuid,
-                        (EFI_HANDLE)&gBlockIo);
+                        &gBlockIo);
 
-    efi_register_protocol(gDevicePath, 
+    efi_register_protocol(gDiskHandle, 
                         &gEfiDevicePathProtocolGuid, 
-                        (EFI_HANDLE)&gDevicePath);
+                        &gDevicePath);
+
+    gLoadedImageInstance->DeviceHandle = gDiskHandle;
 
     // config table + system table CRC
     format_config_table();
