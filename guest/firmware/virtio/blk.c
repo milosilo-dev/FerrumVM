@@ -45,6 +45,8 @@ void virtio_blk_init(void){
         | VIRTIO_STATUS_DRIVER
         | VIRTIO_STATUS_FEATURES_OK
         | VIRTIO_STATUS_DRIVER_OK);
+    
+    virtio_blk_config = *(VirtioBlkConfig*)(VIRTIO_BLK_BASE + 0x100);
 }
 
 typedef struct {

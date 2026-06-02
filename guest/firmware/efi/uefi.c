@@ -760,6 +760,7 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
                           &gEfiLoadedImageProtocolGuid2,
                           gLoadedImageInstance);
     
+    gDiskMedia.LastBlock = (virtio_blk_config.size_max / virtio_blk_config.blk_size) - 1;
     efi_register_protocol(gDiskHandle,
                         &gEfiBlockIoProtocolGuid,
                         &gBlockIo);
@@ -767,6 +768,10 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
     efi_register_protocol(gDiskHandle, 
                         &gEfiDevicePathProtocolGuid, 
                         &gDevicePath);
+    
+    efi_register_protocol(gDiskHandle, 
+                        &gEfiSimpleFileSystemProtocolGuid, 
+                        &gSfsp);
 
     gLoadedImageInstance->DeviceHandle = gDiskHandle;
 

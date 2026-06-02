@@ -17,10 +17,39 @@ impl BlkRequest {
     }
 }
 
+struct VirtioBlkConfig {
+    capacity: u64,
+    size_max: u32,
+    seg_max: u32,
+    blk_size: u32,
+}
+
+impl VirtioBlkConfig {
+    pub fn new(capacity: u64, size_max: u32, seg_max: u32, blk_size: u32) -> Self{
+        Self {
+            capacity,
+            size_max,
+            seg_max,
+            blk_size
+        }
+    }
+
+    pub fn to_bytes(&self, length: usize) -> Vec<u8> {
+        let mut buf = self.capacity.to_le_bytes().to_vec();
+        buf.extend(self.size_max.to_le_bytes());
+        buf.extend(self.seg_max.to_le_bytes());
+        buf.extend(self.blk_size.to_le_bytes());
+
+        buf.resize(length, 0);
+
+        buf
+    }
+}
 
 pub struct BlkVirtio {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     blk_file: File,
+    config: VirtioBlkConfig,
 }
 
 impl BlkVirtio {
@@ -30,13 +59,17 @@ impl BlkVirtio {
             File::create(path).unwrap();
         }
 
-        Self{
-            guest_memory: None,
-            blk_file: OpenOptions::new()
+        let blk_file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(path)
-                .expect("failed to open disk image"),
+                .expect("failed to open disk image");
+        let file_size = blk_file.metadata().unwrap().len();
+
+        Self{
+            guest_memory: None,
+            blk_file,
+            config: VirtioBlkConfig::new(file_size, 1024 * 1024, 128, 512),
         }
     }
 }
@@ -139,5 +172,9 @@ impl VirtioDevice for BlkVirtio {
         }
 
         did_work
+    }
+    
+    fn read_config(&self, length: usize) -> Vec<u8> {
+        self.config.to_bytes(length)
     }
 }

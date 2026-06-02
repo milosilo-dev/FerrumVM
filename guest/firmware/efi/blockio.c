@@ -21,7 +21,7 @@ static EFI_STATUS EFIAPI disk_ReadBlocks(
     return EFI_SUCCESS;
 }
 
-static EFI_BLOCK_IO_MEDIA gDiskMedia = {
+EFI_BLOCK_IO_MEDIA gDiskMedia = {
     .MediaId          = 1,
     .RemovableMedia   = 0,
     .MediaPresent     = 1,

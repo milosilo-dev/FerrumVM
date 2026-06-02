@@ -40,6 +40,13 @@ impl MMIOTransport {
 
 impl MMIODevice for MMIOTransport {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
+        if addr >= 0x100 {
+            let offset = (addr - 0x100) as usize;
+            let cfg_bytes = self.device.read_config(offset + length);
+
+            return cfg_bytes[offset..offset + length].to_vec();
+        }
+
         let value = (match addr {
             0x000 => MAGIC_NUMBER,
             0x004 => VERSION,

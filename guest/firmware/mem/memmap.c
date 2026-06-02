@@ -17,7 +17,6 @@ typedef struct {
 } __attribute__((packed)) MemMapHeader;
 
 MemMapEntry memmap[MEMMAP_MAX_ENTRIES];
-static uint32_t memmap_length;
 
 void init_memmap() {
     MemMapHeader* header = (MemMapHeader *)0x7000;

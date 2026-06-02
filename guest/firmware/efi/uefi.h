@@ -4,12 +4,17 @@
 #include "../headers/uefi/config_table.h"
 #include "blockio.h"
 #include "dev_path.h"
+#include "sfsp.h"
 
 extern EFI_GUID gEfiDevicePathProtocolGuid;
-extern EFI_HANDLE gDevicePath;
+extern EFI_DEVICE_PATH_PROTOCOL gDevicePath;
+
+extern EFI_GUID gEfiSimpleFileSystemProtocolGuid;
+extern EFI_SIMPLE_FILE_SYSTEM_PROTOCOL gSfsp;
 
 extern EFI_GUID gEfiBlockIoProtocolGuid;
 extern EFI_BLOCK_IO gBlockIo;
+extern EFI_BLOCK_IO_MEDIA gDiskMedia;
 extern EFI_HANDLE gDiskHandle;
 extern EFI_LOADED_IMAGE_PROTOCOL* gLoadedImageInstance;
 

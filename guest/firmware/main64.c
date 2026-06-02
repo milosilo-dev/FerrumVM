@@ -64,6 +64,7 @@ void c_main_64(void) {
 #include "virtio/blk.c"
 #include "efi/blockio.c"
 #include "efi/dev_path.c"
+#include "efi/sfsp.c"
 #include "disk/esp.c"
 #include "disk/fat32.c"
 #include "efi/uefi.c"

@@ -53,4 +53,6 @@ impl VirtioDevice for CntVirtio {
 
         did_work
     }
+    
+    fn read_config(&self, _length: usize) -> Vec<u8> {vec![]}
 }
