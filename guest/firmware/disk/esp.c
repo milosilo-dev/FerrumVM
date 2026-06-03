@@ -87,6 +87,17 @@ int load_part_table(SectorRange* range) {
         if (memcmp(entry->type_guid, esp_guid, 16) == 0) {
             range->first_sector = entry->first_lba;
             range->last_sector = entry->last_lba;
+
+            gDiskPath.Hd.PartitionNumber = i + 1;
+            gDiskPath.Hd.PartitionStart = entry->first_lba;
+            gDiskPath.Hd.PartitionSize = entry->last_lba - entry->first_lba + 1;
+
+            memcpy(
+                gDiskPath.Hd.Signature,
+                &(entry->unique_guid),
+                16
+            );
+
             break;
         }
     }

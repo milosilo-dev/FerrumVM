@@ -16,7 +16,11 @@ static EFI_STATUS EFIAPI disk_ReadBlocks(
     UINTN BufferSize,
     VOID *Buffer
 ) {
-    serial_puts("[BLOCKIO] Read Blocks\n");
+    serial_puts("[BLOCKIO] Read Blocks lba=0x");
+    serial_putx(lba);
+    serial_puts(" buffer_size=0x");
+    serial_putx(BufferSize);
+    serial_puts("\n");
     virtio_blk_read(lba, BufferSize, Buffer);
     return EFI_SUCCESS;
 }

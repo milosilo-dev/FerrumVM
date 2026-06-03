@@ -6,6 +6,32 @@ EFI_DEVICE_PATH_PROTOCOL gDevicePath = {
     {4,0}
 };
 
+DISK_PATH gDiskPath = {
+    .Hd = {
+        .Header = {
+            .Type    = MEDIA_DEVICE_PATH,
+            .SubType = MEDIA_HARDDRIVE_DP,
+            .Length  = {
+                sizeof(HARDDRIVE_DEVICE_PATH) & 0xFF,
+                sizeof(HARDDRIVE_DEVICE_PATH) >> 8
+            }
+        },
+
+        .PartitionNumber = 1,
+        .PartitionStart  = 2048,
+        .PartitionSize   = 262144,
+
+        .MBRType         = 0x02, // GPT
+        .SignatureType   = 0x02, // GUID
+    },
+
+    .End = {
+        .Type    = END_DEVICE_PATH_TYPE,
+        .SubType = END_ENTIRE_DEVICE_PATH_SUBTYPE,
+        .Length  = {4, 0}
+    }
+};
+
 EFI_GUID gEfiDevicePathProtocolGuid = {
     0x09576e91,0x6d3f,0x11d2,
     {0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}

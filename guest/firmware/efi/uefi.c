@@ -336,8 +336,10 @@ static EFI_STATUS efi_GetVariable(
     VOID     *Data
 ) {
     serial_puts("[EFI] GetVarible name='");
-    for (int i = 0; i < 10; i++) {
-        serial_putc(VariableName[i]);
+    for (int i = 0; i < 20; i++) {
+        serial_puts("0x");
+        serial_putx(VariableName[i]);
+        serial_puts(" ");
     }
     serial_puts("'\n");
 }
@@ -752,6 +754,11 @@ void format_handle_data(EFI_IMAGE_HANDLE_DATA* handle_data, EFI_SYSTEM_TABLE *st
     handle_data->loaded_image.ImageBase   = load_base;
     handle_data->loaded_image.ImageSize   = image_size;
     handle_data->loaded_image.SystemTable = st;
+    handle_data->loaded_image.FilePath    = (EFI_DEVICE_PATH_PROTOCOL*)&gBootFilePath;
+
+    serial_puts("Boot file path = ");
+    serial_putx(gBootFilePath.FileNode.Length[0]);
+    serial_puts("\n");
 }
 
 void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
@@ -767,7 +774,7 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
 
     efi_register_protocol(gDiskHandle, 
                         &gEfiDevicePathProtocolGuid, 
-                        &gDevicePath);
+                        &gDiskPath);
     
     efi_register_protocol(gDiskHandle, 
                         &gEfiSimpleFileSystemProtocolGuid, 

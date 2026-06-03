@@ -2,12 +2,14 @@
 #include "../headers/uefi/uefi.h"
 #include "../headers/uefi/image_handle.h"
 #include "../headers/uefi/config_table.h"
+#include "../headers/uefi/file_path.h"
 #include "blockio.h"
 #include "dev_path.h"
 #include "sfsp.h"
 
 extern EFI_GUID gEfiDevicePathProtocolGuid;
 extern EFI_DEVICE_PATH_PROTOCOL gDevicePath;
+extern DISK_PATH gDiskPath;
 
 extern EFI_GUID gEfiSimpleFileSystemProtocolGuid;
 extern EFI_SIMPLE_FILE_SYSTEM_PROTOCOL gSfsp;
