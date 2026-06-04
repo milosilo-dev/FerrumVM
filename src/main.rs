@@ -9,6 +9,7 @@ use ferrumvm::{
 };
 
 fn main() {
+    print!("\n\r");
     let com1 = Box::new(Serial::new());
     let com2 = Box::new(Serial::new());
     let timer = Box::new(Pit::new());

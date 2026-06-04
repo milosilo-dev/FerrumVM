@@ -90,13 +90,27 @@ int load_part_table(SectorRange* range) {
 
             gDiskPath.Hd.PartitionNumber = i + 1;
             gDiskPath.Hd.PartitionStart = entry->first_lba;
-            gDiskPath.Hd.PartitionSize = entry->last_lba - entry->first_lba + 1;
+            gDiskPath.Hd.PartitionSize = (entry->last_lba - entry->first_lba + 1) - 0x2000;
 
             memcpy(
                 gDiskPath.Hd.Signature,
                 &(entry->unique_guid),
                 16
             );
+
+            serial_puts("Harddisk Signiture: ");
+            for (int i = 0; i < 16; i++) {
+                serial_putx(gDiskPath.Hd.Signature[i]);
+                if (i != 15)
+                    serial_puts("-");
+            }
+            serial_puts("\nHarddisk Partition Number: 0x");
+            serial_putx(gDiskPath.Hd.PartitionNumber);
+            serial_puts("\nHarddisk Partition Start: 0x");
+            serial_putx(gDiskPath.Hd.PartitionStart);
+            serial_puts("\nHarddisk Partition Size: 0x");
+            serial_putx(gDiskPath.Hd.PartitionSize);
+            serial_puts("\n");
 
             break;
         }

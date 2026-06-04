@@ -767,7 +767,17 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
                           &gEfiLoadedImageProtocolGuid2,
                           gLoadedImageInstance);
     
-    gDiskMedia.LastBlock = (virtio_blk_config.size_max / virtio_blk_config.blk_size) - 1;
+    gDiskMedia.LastBlock = (virtio_blk_config.capacity / virtio_blk_config.blk_size) - 1;
+    gDiskMedia.BlockSize = virtio_blk_config.blk_size;
+
+    serial_puts("Virtio Blk Last Block = 0x");
+    serial_putx(gDiskMedia.LastBlock);
+    serial_puts("\nVirtio Blk Size = 0x");
+    serial_putx(gDiskMedia.BlockSize);
+    serial_puts("\nVirtio Blk Bytes = 0x");
+    serial_putx(gDiskMedia.LastBlock * gDiskMedia.BlockSize);
+    serial_puts("\n");
+
     efi_register_protocol(gDiskHandle,
                         &gEfiBlockIoProtocolGuid,
                         &gBlockIo);
