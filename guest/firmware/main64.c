@@ -51,7 +51,6 @@ void c_main_64(void) {
         serial_puts("Failed to load EFI application\n");
         hang();
     }
-    virtio_blk_dump();
 
     format_pe(file_buf);
     hang();

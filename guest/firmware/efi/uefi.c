@@ -277,6 +277,12 @@ static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
 }
 
 void efi_register_protocol(EFI_HANDLE handle, EFI_GUID *guid, void *iface) {
+    serial_puts("[FIRMWARE] Installed protcol with guid {");
+    serial_putx(guid->Data1); serial_puts("-");
+    serial_putx(guid->Data2); serial_puts("-");
+    serial_putx(guid->Data3); serial_puts("} onto handle 0x");
+    serial_putx((uint32_t)handle); serial_puts("\n");
+
     if (gProtocolCount >= MAX_PROTOCOLS) {
         serial_puts("[EFI] Protocol DB full!\n");
         return;
@@ -475,7 +481,18 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     serial_puts("[EFI] HandleProtocol {");
     serial_putx(protocol->Data1);serial_puts("-");
     serial_putx(protocol->Data2);serial_puts("-");
-    serial_putx(protocol->Data3);serial_puts("} ");
+    serial_putx(protocol->Data3);serial_puts("-");
+
+    for (int i = 0; i < 2; i++)
+        serial_putx(protocol->Data4[i]);
+
+    serial_puts("-");
+
+    for (int i = 2; i < 8; i++)
+        serial_putx(protocol->Data4[i]);
+
+    serial_puts("} ");
+
     if (!handle || !interface) {
         serial_puts("ret=invalid_param, handle=");
         serial_putx((uint64_t)handle);
@@ -485,10 +502,10 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
         return EFI_INVALID_PARAMETER;
     }
 
-    serial_puts("DeviceHandle=");
-    serial_putx((uint64_t)gLoadedImageInstance->DeviceHandle);
+    serial_puts("handle=");
+    serial_putx((uint64_t)handle);
     serial_puts(" ret=");
-
+    
     void* found = efi_find_protocol(handle, protocol);
     if (found) { *interface = found; serial_puts("efi_sucsess\n"); return EFI_SUCCESS; }
 

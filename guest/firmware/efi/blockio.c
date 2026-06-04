@@ -20,8 +20,17 @@ static EFI_STATUS EFIAPI disk_ReadBlocks(
     serial_putx(lba);
     serial_puts(" buffer_size=0x");
     serial_putx(BufferSize);
+    int status = virtio_blk_read(lba, BufferSize, Buffer);
+    serial_puts(" buffer (first 16 uint32_t's)=[0x");
+    for (int i = 0; i < 16; i++) {
+        serial_putx(((uint32_t *)Buffer)[i]);
+        if (i != 15){
+            serial_puts(",0x");
+        }
+    }
+    serial_puts("] status=0x");
+    serial_putx(status);
     serial_puts("\n");
-    virtio_blk_read(lba, BufferSize, Buffer);
     return EFI_SUCCESS;
 }
 
