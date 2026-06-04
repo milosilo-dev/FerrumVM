@@ -34,6 +34,7 @@ typedef int       BOOLEAN;
 #define EFI_OUT_OF_RESOURCES    (0x8000000000000000ULL | 9)
 #define EFI_BUFFER_TOO_SMALL    (0x8000000000000000ULL | 5)
 #define EFI_NOT_READY           (0x8000000000000000ULL | 6)
+#define EFI_DEVICE_ERROR        (0x8000000000000000ULL | 7)
 
 // ── GUID ──────────────────────────────────────────────────────────
 typedef struct {

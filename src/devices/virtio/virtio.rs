@@ -78,6 +78,7 @@ impl VirtioGuestMemoryHandle {
             if addr >= start && addr + buf.len() as u64 <= end {
                 let data = mem_region.read((addr - mem_region.mem_offset) as usize, buf.len()).unwrap();
                 *buf = data;
+                return;
             }
         }
     }
@@ -134,8 +135,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset as usize + mem_region.mem_size;
-            if addr >= start && addr as usize + data.len() <= end {
+            let end = mem_region.mem_offset + mem_region.mem_size as u64;
+            if addr >= start && addr + data.len() as u64 <= end {
                 mem_region.write(data, (addr - mem_region.mem_offset) as usize);
                 return;
             }

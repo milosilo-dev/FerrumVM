@@ -149,7 +149,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         }
 
         // Reject low firmware/private regions
-        if (addr < 0x200000ULL && addr >= 0x9EFFFULL) {
+        if (addr < 0x200000ULL) {
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }

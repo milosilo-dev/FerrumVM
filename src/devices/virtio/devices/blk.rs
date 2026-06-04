@@ -135,7 +135,7 @@ impl VirtioDevice for BlkVirtio {
 
             let status_byte = queue.get_descriptor(&guest_memory, data_section.next);
 
-            if data_section.flags & 2 == 0 {
+            if status_byte.flags & 2 == 0 {
                 panic!("virtio-blk got inncorect status_byte");
             }
 
@@ -145,14 +145,15 @@ impl VirtioDevice for BlkVirtio {
                     let mut buf = vec![0u8; data_section.len as usize];
 
                     match self.blk_file.read_exact(&mut buf) {
-                        Ok(_) => guest_memory.write_u8(status_byte.addr, 0x00),
+                        Ok(_) => {
+                            guest_memory.write_guest_memory(data_section.addr, &buf);
+                            guest_memory.write_u8(status_byte.addr, 0x00);
+                        },
                         Err(err) => {
                             println!("{}", err);
                             guest_memory.write_u8(status_byte.addr, 0x01)
                         },
                     }
-
-                    guest_memory.write_guest_memory(data_section.addr, &buf);
                 },
                 true => { // Device write
                     let mut buf = vec![0u8; data_section.len as usize];

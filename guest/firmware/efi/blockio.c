@@ -31,7 +31,7 @@ static EFI_STATUS EFIAPI disk_ReadBlocks(
     serial_puts("] status=0x");
     serial_putx(status);
     serial_puts("\n");
-    return EFI_SUCCESS;
+    return status == 0 ? EFI_SUCCESS : EFI_DEVICE_ERROR;
 }
 
 EFI_BLOCK_IO_MEDIA gDiskMedia = {
