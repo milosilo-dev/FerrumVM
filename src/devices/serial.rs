@@ -49,6 +49,13 @@ impl Serial {
                             std::process::exit(0);
                         }
                         Event::Key(KeyEvent {
+                            code: KeyCode::Char('w'),
+                            kind: KeyEventKind::Press,
+                            ..
+                        }) => {
+                            queue.lock().unwrap().push('\n' as u8);
+                        }
+                        Event::Key(KeyEvent {
                             code: KeyCode::Char(c),
                             kind: KeyEventKind::Press,
                             ..

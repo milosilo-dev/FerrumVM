@@ -1,4 +1,4 @@
-Harddisk Signiture: 94-20-95-7D-F9-60-B1-48-B8-CD-B8-6A-B7-D5-52-EE
+Harddisk Signiture: 3B-16-C3-83-84-30-97-43-84-A8-CC-D4-3A-3A-AD-EC
 Harddisk Partition Number: 0x1
 Harddisk Partition Start: 0x800
 Harddisk Partition Size: 0x1D7DF
@@ -67,12 +67,13 @@ Virtio Blk Bytes = 0x3FFFE00
 [BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
 [BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
 [BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x1280 buffer_size=0x8000 status=0x0
 [EFI] LocateProtocol {BB25CF6F-F1D4-11D2} ret=efi_sucsess
 [EFI] GetVarible name='0x00x00x00x00x00x00x00x00x00x0'
 [EFI] GetVarible name='0x00x00x00x00x00x00x00x00x00x0'
 [EFI] GetVarible name='0x4C0x6F0x610x640x650x720x430x6F0x6E0x66'
-[EFI] GetVarible name='0x4C0x6F0x610x640x650x720x430x6F0x6E0x66'
-[EFI] GetVarible name='0x5B000x46450x5D490x41200x6C6C0x636F0x74610x50650x67610x7365'
+[EFI] GetVarible name='0x6F6E0x75000x780x00x00x00x00x00x00x0'
 [EFI] LocateHandle {9042A9DE-23DC-4A38} ret=not_found
 [STUB] SetAttribute
 [STUB] SetAttribute
@@ -81,9 +82,127 @@ Virtio Blk Bytes = 0x3FFFE00
 [STUB] SetAttribute
 [STUB] SetAttribute
 [STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
 [EFI] HandleProtocol handle=1 ret=un-suported
 [EFI] HandleProtocol handle=1 ret=un-suported
 [EFI] CreateEvent type=0x80000000 tpl=0x8
 [EFI] CreateEvent -> event=0x30076B8
+[STUB] SetTimer
+[EFI] WaitForEvent type=0x0 length=0x2
+[STIP] ReadKeyStroke: got char=A
+[STUB] CloseEvent
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetVariable
+[STUB] SetVariable
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] CreateEvent type=0x80000000 tpl=0x8
+[EFI] CreateEvent -> event=0x30076E8
+[STUB] SetTimer
+[EFI] WaitForEvent type=0x0 length=0x2
+[STIP] ReadKeyStroke: got char=73
+[STUB] CloseEvent
+[STUB] SetAttribute
+[STUB] SetAttribute
+[EFI] HandleProtocol handle=3000098 ret=efi_sucsess
+[BLOCKIO] Read Blocks lba=0x840 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x1280 buffer_size=0x8000 status=0x0
+[EFI] LocateProtocol {BB25CF6F-F1D4-11D2} ret=efi_sucsess
+[EFI] GetVarible name='0x00x00x00x00xDAA0xE0000x3980x8C2B0x00x0'
+[EFI] GetVarible name='0x00x00x00x00xDAA0xE0000x3980x8C2B0x00x0'
+[EFI] GetVarible name='0x4C0x6F0x610x640x650x720x430x6F0x6E0x66'
+[EFI] GetVarible name='0x6F6E0x75000x780x00x00x00x00x00x00x0'
+[EFI] LocateHandle {9042A9DE-23DC-4A38} ret=not_found
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] ClearScreen
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] CreateEvent type=0x80000000 tpl=0x8
+[EFI] CreateEvent -> event=0x30077A8
+[STUB] SetTimer
+[EFI] WaitForEvent type=0x0 length=0x2
+[STIP] ReadKeyStroke: got char=A
+[STUB] CloseEvent
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetVariable
+[STUB] SetVariable
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] CreateEvent type=0x80000000 tpl=0x8
+[EFI] CreateEvent -> event=0x30077D8
+[STUB] SetTimer
+[EFI] WaitForEvent type=0x0 length=0x2
+[STIP] ReadKeyStroke: got char=63
+[STUB] CloseEvent
+[STUB] SetAttribute
+[STUB] SetAttribute
+[EFI] HandleProtocol handle=3000098 ret=efi_sucsess
+[BLOCKIO] Read Blocks lba=0x840 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0xFC0 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x800 buffer_size=0x8000 status=0x0
+[BLOCKIO] Read Blocks lba=0x1280 buffer_size=0x8000 status=0x0
+[EFI] LocateProtocol {BB25CF6F-F1D4-11D2} ret=efi_sucsess
+[EFI] GetVarible name='0x00x00x00x00xDAA0xE0000x3980x8C2B0x00x0'
+[EFI] GetVarible name='0x00x00x00x00xDAA0xE0000x3980x8C2B0x00x0'
+[EFI] GetVarible name='0x4C0x6F0x610x640x650x720x430x6F0x6E0x66'
+[EFI] GetVarible name='0x6F6E0x75000x780x00x00x00x00x00x00x0'
+[EFI] LocateHandle {9042A9DE-23DC-4A38} ret=not_found
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] ClearScreen
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[STUB] SetAttribute
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] HandleProtocol handle=1 ret=un-suported
+[EFI] CreateEvent type=0x80000000 tpl=0x8
+[EFI] CreateEvent -> event=0x3007898
 [STUB] SetTimer
 [EFI] WaitForEvent type=0x0 length=0x2
