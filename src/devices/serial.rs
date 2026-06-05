@@ -1,15 +1,16 @@
 use std::{
-    collections::VecDeque, io::{self, Write, stdin, stdout}, sync::{Arc, Mutex}
+    collections::VecDeque, io::{self, Write}, sync::{Arc, Mutex}
+};
+
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    terminal::{disable_raw_mode, enable_raw_mode},
 };
 
 use crate::{
     device_maps::io::IODevice,
     irq::handler::{IRQCommand, IRQHandler},
 };
-
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::IntoRawMode;
 
 pub struct Serial {
     data: VecDeque<u8>,
@@ -19,30 +20,27 @@ pub struct Serial {
 
 impl Serial {
     pub fn new() -> Self {
-        let raw_terminal = Arc::new(Mutex::new(stdout().into_raw_mode().unwrap()));
+        enable_raw_mode().unwrap();
         let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
 
         std::thread::spawn({
             let queue = queue.clone();
-            let raw_terminal = raw_terminal.clone();
 
-            move || {
-                for key in stdin().keys() {
-                    match key.unwrap() {
-                        Key::Char(c) => {
-                            queue.lock().unwrap().push(c as u8);
-                        }
-                        Key::Ctrl('z') => {
-                            drop(raw_terminal);
-                            std::process::exit(0);
-                        }
-                        _ => {}
+            move || loop {
+                match event::read().unwrap() {
+                    Event::Key(KeyEvent { code: KeyCode::Char('z'), kind: KeyEventKind::Press, modifiers: KeyModifiers::CONTROL, .. }) => {
+                        disable_raw_mode().unwrap();
+                        println!("");
+                        std::process::exit(0);
                     }
+                    Event::Key(KeyEvent { code: KeyCode::Char(c), kind: KeyEventKind::Press, .. }) => {
+                        queue.lock().unwrap().push(c as u8);
+                    }
+                    _ => {}
                 }
             }
         });
-        drop(raw_terminal);
-        
+
         Self {
             data: vec![].into(),
             irq_handler: None,

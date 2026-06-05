@@ -11,7 +11,7 @@ kvm-ioctls = "0.24.0"
 libc = "0.2.183"
 serde = { version = "1.0.228", features = ["derive"] }
 vmm-sys-util = "0.15.0"
-termion = "4.0.6"
+crossterm = "0.28"
 
 [build-dependencies]
 walkdir = "2.5.0"
