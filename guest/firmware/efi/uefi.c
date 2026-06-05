@@ -227,7 +227,12 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 }
 
 // ── real loaded-image protocol (set by format_PE before entry) ──
-EFI_LOADED_IMAGE_PROTOCOL* gLoadedImageInstance = NULL;
+static EFI_LOADED_IMAGE_PROTOCOL gLoadedImageData = {
+    .Revision     = EFI_LOADED_IMAGE_PROTOCOL_REVISION,
+    .ImageBase    = NULL,  // fill in before registering
+    .ImageSize    = 0,
+};
+EFI_LOADED_IMAGE_PROTOCOL *gLoadedImageInstance = &gLoadedImageData;
 
 static int efi_guid_match(EFI_GUID* a, EFI_GUID* b) {
     return memcmp(a, b, sizeof(EFI_GUID)) == 0;
@@ -246,6 +251,25 @@ static struct {
     void*      iface;
 } gProtocolDB[MAX_PROTOCOLS];
 static int gProtocolCount;
+
+static void efi_dump_protocols_for(EFI_HANDLE handle) {
+    serial_puts("[EFI] Protocols on handle ");
+    serial_putx((uint64_t)handle);
+    serial_puts(":\n");
+    for (int i = 0; i < gProtocolCount; i++) {
+        if (gProtocolDB[i].handle == handle) {
+            serial_puts("  GUID=");
+            serial_putx(gProtocolDB[i].guid.Data1); serial_puts("-");
+            serial_putx(gProtocolDB[i].guid.Data2); serial_puts("-");
+            serial_putx(gProtocolDB[i].guid.Data3); serial_puts("-");
+            for (int j = 0; j < 8; j++)
+                serial_putx(gProtocolDB[i].guid.Data4[j]);
+            serial_puts(" iface=");
+            serial_putx((uint64_t)gProtocolDB[i].iface);
+            serial_puts("\n");
+        }
+    }
+}
 
 static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
     EFI_HANDLE *Handle,
@@ -482,6 +506,8 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     serial_putx(protocol->Data1);serial_puts("-");
     serial_putx(protocol->Data2);serial_puts("-");
     serial_putx(protocol->Data3);serial_puts("-");
+
+    efi_dump_protocols_for(handle);
 
     for (int i = 0; i < 2; i++)
         serial_putx(protocol->Data4[i]);

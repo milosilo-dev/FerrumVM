@@ -19,7 +19,7 @@ DISK_PATH gDiskPath = {
 
         .PartitionNumber = 1,
         .PartitionStart  = 2048,
-        .PartitionSize   = 262144,
+        .PartitionSize   = 0x1D7DF,
 
         .MBRType         = 0x02, // GPT
         .SignatureType   = 0x02, // GUID

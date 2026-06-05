@@ -143,9 +143,15 @@ impl VirtioDevice for BlkVirtio {
                 false => { // Device read
                     self.blk_file.seek(SeekFrom::Start(request.sector * SECTOR_SIZE)).unwrap();
                     let mut buf = vec![0u8; data_section.len as usize];
+                    if data_section.len == 0x1000{
+                        print!("    -- Blk read sector={:X} length={:X}", request.sector, data_section.len);
+                    }
 
                     match self.blk_file.read_exact(&mut buf) {
                         Ok(_) => {
+                            if data_section.len == 0x1000{
+                                print!(" buf={:?} --\n\r", buf);
+                            }
                             guest_memory.write_guest_memory(data_section.addr, &buf);
                             guest_memory.write_u8(status_byte.addr, 0x00);
                         },
