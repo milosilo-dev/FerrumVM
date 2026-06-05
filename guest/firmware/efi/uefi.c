@@ -27,8 +27,6 @@ void update_events() {
     }
 }
 
-// ── con out ───────────────────────────────────────────────────────
-
 static EFI_STATUS EFIAPI efi_output_string(
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This,
     uint16_t *String
@@ -46,10 +44,6 @@ static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
     serial_puts("[EFI] Stall us=");
     serial_putx(microseconds);
     serial_puts("\n");
-    volatile uint64_t x = microseconds * 1000;
-
-    //while (x--)
-    //    __asm__ volatile("pause");
 
     return EFI_SUCCESS;
 }
@@ -91,15 +85,8 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
     .Mode               = &gConOutMode,
 };
 
-// Heap mem
-
-// ── page allocator for efi_AllocatePages ────────────────────────────
-// Uses the existing heap-based malloc (same as AllocatePool) so that
-// allocated pages are safely inside the heap region (0x3000000-0x4000000)
-// and never collide with firmware page-tables, memory-map data, or
-// low-memory areas.
-#define PG_LIMIT 0x20000000ULL  // end of our memory slot (512 MB)
-static uint64_t pg_bump = 0x4000000ULL;  // start after heap (64 MB)
+#define PG_LIMIT 0x20000000ULL
+static uint64_t pg_bump = 0x4000000ULL;
 
 static EFI_STATUS EFIAPI efi_AllocatePool(
     EFI_MEMORY_TYPE type,
@@ -144,19 +131,16 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         serial_puts(" requested=0x");
         serial_putx(addr);
 
-        // Must be page aligned
         if (addr & 0xFFFULL) {
             serial_puts(" ret=EFI_INVALID_PARAMETER\n");
             return EFI_INVALID_PARAMETER;
         }
 
-        // Reject low firmware/private regions
         if (addr < 0x200000ULL) {
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
-        // Bounds check
         if (addr + size > PG_LIMIT) {
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
@@ -164,7 +148,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         *memory = addr;
         map_key++;
         serial_puts(" ret=EFI_SUCCESS\n");
-        return EFI_SUCCESS;  // ← return here, never reach memset
+        return EFI_SUCCESS;
     }
 
     case AllocateMaxAddress: {
@@ -177,7 +161,6 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 
         addr = (max - size) & ~0xFFFULL;
 
-        // Keep above reserved region
         if (addr < 0x200000ULL) {
             addr = 0x200000ULL;
         }
@@ -195,20 +178,16 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 
     case AllocateAnyPages:
     default: {
-
-        // ALWAYS align before use
         addr = (pg_bump + 0xFFFULL) & ~0xFFFULL;
 
         serial_puts(" returned=0x");
         serial_putx(addr);
 
-        // Check BEFORE modifying allocator state
         if (addr + size > PG_LIMIT) {
             serial_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
-        // Advance allocator ONLY on success
         pg_bump = addr + size;
 
         break;
@@ -216,22 +195,16 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     }
 
     *memory = addr;
-
-    // Only successful allocations change map key
     map_key++;
-
-    // Zero allocated memory
     memset((void *)(uintptr_t)addr, 0, size);
-
     serial_puts(" ret=EFI_SUCCESS\n");
 
     return EFI_SUCCESS;
 }
 
-// ── real loaded-image protocol (set by format_PE before entry) ──
 static EFI_LOADED_IMAGE_PROTOCOL gLoadedImageData = {
     .Revision     = EFI_LOADED_IMAGE_PROTOCOL_REVISION,
-    .ImageBase    = NULL,  // fill in before registering
+    .ImageBase    = NULL,
     .ImageSize    = 0,
 };
 EFI_LOADED_IMAGE_PROTOCOL *gLoadedImageInstance = &gLoadedImageData;
@@ -245,7 +218,6 @@ static EFI_GUID gEfiLoadedImageProtocolGuid2 = {
     {0x8E, 0x3F, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B}
 };
 
-// ── simple handle database ─────────────────────────────────────────
 #define MAX_PROTOCOLS 64
 static struct {
     EFI_HANDLE handle;
@@ -291,7 +263,6 @@ static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
     return EFI_SUCCESS;
 }
 
-// find first matching protocol in database; returns NULL if not found
 static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
     if (!guid) return NULL;
     for (int i = 0; i < gProtocolCount; i++) {
@@ -328,14 +299,12 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
     serial_putx(guid->Data2); serial_puts("-");
     serial_putx(guid->Data3); serial_puts("} ret=");
 
-    // return the real LoadedImageProtocol if requested
     if (gLoadedImageInstance && efi_guid_match(guid, &gEfiLoadedImageProtocolGuid2)) {
         *iface = gLoadedImageInstance;
         serial_puts("LoadedImageProtocol\n");
         return EFI_SUCCESS;
     }
 
-    // check protocol database for ANY handle
     if (gProtocolCount > 0) {
         for (int i = 0; i < gProtocolCount; i++) {
             if (efi_guid_match(&gProtocolDB[i].guid, guid)) {
@@ -346,7 +315,6 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
         }
     }
 
-    // allocate a minimal protocol interface: 16 stub function pointers
     uint64_t* proto = malloc(16 * sizeof(uint64_t));
     if (!proto) {
         *iface = NULL;
@@ -369,10 +337,9 @@ static EFI_STATUS efi_GetVariable(
     VOID     *Data
 ) {
     serial_puts("[EFI] GetVarible name='");
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 10; i++) {
         serial_puts("0x");
         serial_putx(VariableName[i]);
-        serial_puts(" ");
     }
     serial_puts("'\n");
 }
@@ -504,7 +471,7 @@ static EFI_STATUS EFIAPI efi_CreateEventEx(
     serial_puts("[EFI] CreateEventEx type=0x");
     serial_putx(Type);
     serial_puts("\n");
-    (void)EventGroup; // event groups not supported
+    (void)EventGroup;
 
     if (!Event) return EFI_INVALID_PARAMETER;
     INTERNAL_EVENT *ev = malloc(sizeof(INTERNAL_EVENT));
@@ -576,8 +543,6 @@ static EFI_STATUS EFIAPI efi_CalculateCrc32(VOID *Data, UINTN DataSize, UINT32 *
     return EFI_SUCCESS;
 }
 
-// ── fake handle for protocol queries ───────────────────────────────
-
 static int gFakeHandleData;
 static EFI_HANDLE gFakeHandle = (EFI_HANDLE)&gFakeHandleData;
 
@@ -585,8 +550,6 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface
 ) {
     serial_puts("[EFI] HandleProtocol ");
-
-    efi_dump_protocols_for(handle);
 
     if (!handle || !interface) {
         serial_puts("ret=invalid_param, handle=");
@@ -604,24 +567,6 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
     void* found = efi_find_protocol(handle, protocol);
     if (found) {
         *interface = found;
-        if (efi_guid_match(protocol, &gEfiDevicePathProtocolGuid)) {
-            DISK_PATH* dp = (DISK_PATH*)*interface;
-            serial_puts("[EFI] DevicePath Type=");
-            serial_putx(dp->Hd.Header.Type);
-            serial_puts(" SubType=");
-            serial_putx(dp->Hd.Header.SubType);
-            serial_puts(" PartNum=");
-            serial_putx(dp->Hd.PartitionNumber);
-            serial_puts(" Start=");
-            serial_putx(dp->Hd.PartitionStart);
-            serial_puts(" Size=");
-            serial_putx(dp->Hd.PartitionSize);
-            serial_puts(" SigType=");
-            serial_putx(dp->Hd.SignatureType);
-            serial_puts(" Sig=");
-            for (int i = 0; i < 16; i++) serial_putx(dp->Hd.Signature[i]);
-            serial_puts("\n");
-        }
         serial_puts("efi_sucsess\n");
         return EFI_SUCCESS;
     }
@@ -684,13 +629,11 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
         return EFI_INVALID_PARAMETER;
     }
 
-    // Collect unique handles that have this protocol
     EFI_HANDLE matches[MAX_PROTOCOLS];
     UINTN      nmatches = 0;
 
     for (UINTN i = 0; i < gProtocolCount; i++) {
         if (!efi_guid_match(&gProtocolDB[i].guid, guid)) continue;
-        // deduplicate handles
         bool already = false;
         for (UINTN j = 0; j < nmatches; j++)
             if (matches[j] == gProtocolDB[i].handle) { already = true; break; }
@@ -725,8 +668,6 @@ static EFI_STATUS EFIAPI stub_Exit(EFI_HANDLE img, EFI_STATUS status, UINTN size
     serial_puts("[STUB] Exit — halting\n");
     for (;;) __asm__("hlt");
 }
-
-// ── boot services table ───────────────────────────────────────────
 
 static EFI_BOOT_SERVICES gBootServices = {
     .Hdr = {
@@ -782,8 +723,6 @@ static EFI_BOOT_SERVICES gBootServices = {
     .CreateEventEx                      = (void*)efi_CreateEventEx,
 };
 
-// ── runtime services table ────────────────────────────────────────
-
 STUB(GetTime,                EFI_UNSUPPORTED)
 STUB(SetTime,                EFI_UNSUPPORTED)
 STUB(GetWakeupTime,          EFI_UNSUPPORTED)
@@ -825,8 +764,6 @@ static EFI_RUNTIME_SERVICES gRuntimeServices = {
 
 static EFI_CONFIGURATION_TABLE gConfigTables[2];
 
-// ── system table ──────────────────────────────────────────────────
-
 void format_config_table() {
     gConfigTables[0].VendorGuid = (EFI_GUID)ACPI_20_TABLE_GUID;
     gConfigTables[0].VendorTable = (void*)(0xE0000);
@@ -839,14 +776,12 @@ static uint16_t gFirmwareVendor[] = { 'F','e','r','r','u','m', 0 };
 
 void patch_null_stubs(void) {
     void** tbl = (void**)&gBootServices;
-    // skip the header (40 bytes = 5 pointers)
     for (int i = 5; i < sizeof(EFI_BOOT_SERVICES)/8; i++) {
         if (tbl[i] == NULL)
             tbl[i] = stub_Null;
     }
 
     tbl = (void**)&gRuntimeServices;
-    // skip the header (40 bytes = 5 pointers)
     for (int i = 5; i < sizeof(EFI_RUNTIME_SERVICES)/8; i++) {
         if (tbl[i] == NULL)
             tbl[i] = stub_Null;
@@ -897,7 +832,6 @@ void format_handle_data(EFI_IMAGE_HANDLE_DATA* handle_data, EFI_SYSTEM_TABLE *st
 }
 
 void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
-    // LoadedImage on the image handle
     efi_register_protocol(image_handle,
                           &gEfiLoadedImageProtocolGuid2,
                           gLoadedImageInstance);
@@ -940,7 +874,6 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
 
     gLoadedImageInstance->DeviceHandle = gDiskHandle;
 
-    // config table + system table CRC
     format_config_table();
     st->ConfigurationTable   = gConfigTables;
     st->NumberOfTableEntries = 2;

@@ -174,6 +174,8 @@ void format_pe(uint8_t* exe) {
     EFI_STATUS status;
     uint64_t saved_rsp;
 
+    serial_puts("------------------ { Firmware init --> image } ------------------\n");
+
     __asm__ volatile (
         "mov %%rsp, %[sr]\n"
         "and $-16, %%rsp\n"
