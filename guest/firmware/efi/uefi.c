@@ -305,7 +305,8 @@ void efi_register_protocol(EFI_HANDLE handle, EFI_GUID *guid, void *iface) {
     serial_putx(guid->Data1); serial_puts("-");
     serial_putx(guid->Data2); serial_puts("-");
     serial_putx(guid->Data3); serial_puts("} onto handle 0x");
-    serial_putx((uint32_t)handle); serial_puts("\n");
+    serial_putx((uint32_t)handle); serial_puts(" and iface 0x");
+    serial_putx((uint32_t)iface); serial_puts("\n");
 
     if (gProtocolCount >= MAX_PROTOCOLS) {
         serial_puts("[EFI] Protocol DB full!\n");
@@ -502,22 +503,9 @@ static EFI_HANDLE gFakeHandle = (EFI_HANDLE)&gFakeHandleData;
 static EFI_STATUS EFIAPI efi_HandleProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface
 ) {
-    serial_puts("[EFI] HandleProtocol {");
-    serial_putx(protocol->Data1);serial_puts("-");
-    serial_putx(protocol->Data2);serial_puts("-");
-    serial_putx(protocol->Data3);serial_puts("-");
+    serial_puts("[EFI] HandleProtocol ");
 
     efi_dump_protocols_for(handle);
-
-    for (int i = 0; i < 2; i++)
-        serial_putx(protocol->Data4[i]);
-
-    serial_puts("-");
-
-    for (int i = 2; i < 8; i++)
-        serial_putx(protocol->Data4[i]);
-
-    serial_puts("} ");
 
     if (!handle || !interface) {
         serial_puts("ret=invalid_param, handle=");
@@ -526,6 +514,25 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
         serial_putx((uint64_t)interface);
         serial_puts("\n");
         return EFI_INVALID_PARAMETER;
+    }
+
+    if (efi_guid_match(protocol, &gEfiDevicePathProtocolGuid)) {
+        DISK_PATH* dp = (DISK_PATH*)*interface;
+        serial_puts("[EFI] DevicePath Type=");
+        serial_putx(dp->Hd.Header.Type);
+        serial_puts(" SubType=");
+        serial_putx(dp->Hd.Header.SubType);
+        serial_puts(" PartNum=");
+        serial_putx(dp->Hd.PartitionNumber);
+        serial_puts(" Start=");
+        serial_putx(dp->Hd.PartitionStart);
+        serial_puts(" Size=");
+        serial_putx(dp->Hd.PartitionSize);
+        serial_puts(" SigType=");
+        serial_putx(dp->Hd.SignatureType);
+        serial_puts(" Sig=");
+        for (int i = 0; i < 16; i++) serial_putx(dp->Hd.Signature[i]);
+        serial_puts("\n");
     }
 
     serial_puts("handle=");
@@ -819,6 +826,19 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
     serial_putx(gDiskMedia.BlockSize);
     serial_puts("\nVirtio Blk Bytes = 0x");
     serial_putx(gDiskMedia.LastBlock * gDiskMedia.BlockSize);
+    serial_puts("\n");
+
+    serial_puts("[EFI] DevicePath iface ptr = 0x");
+    serial_putx((uint64_t)&gDiskPath);
+    serial_puts("\n");
+
+    serial_puts("[DEBUG] gDiskPath before register:\n");
+    serial_puts("  Type="); serial_putx(gDiskPath.Hd.Header.Type);
+    serial_puts(" SubType="); serial_putx(gDiskPath.Hd.Header.SubType);
+    serial_puts(" PartNum="); serial_putx(gDiskPath.Hd.PartitionNumber);
+    serial_puts(" Start="); serial_putx(gDiskPath.Hd.PartitionStart);
+    serial_puts(" Size="); serial_putx(gDiskPath.Hd.PartitionSize);
+    serial_puts(" SigType="); serial_putx(gDiskPath.Hd.SignatureType);
     serial_puts("\n");
 
     efi_register_protocol(gDiskHandle,
