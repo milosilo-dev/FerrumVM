@@ -47,7 +47,7 @@ int open_fat32(SectorRange* range, Fat32_Handle* fs) {
     return SUCCSESS;
 }
 
-static int read_fat_entry(Fat32_Handle* fs, uint32_t cluster, uint32_t* next_cluster) {
+int read_fat_entry(Fat32_Handle* fs, uint32_t cluster, uint32_t* next_cluster) {
     uint32_t fat_offset    = cluster * 4;
     uint32_t fat_sector    = fs->fat.reserved_sectors + (fat_offset / fs->fat.bytes_per_sector);
     uint32_t entry_offset  = fat_offset % fs->fat.bytes_per_sector;

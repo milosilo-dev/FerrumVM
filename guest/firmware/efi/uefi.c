@@ -18,6 +18,8 @@ static EFI_STATUS EFIAPI stub_Null() {
 }
 
 static uint64_t map_key = 1;
+static int gExitedBootServices = 0;
+static uint64_t gMonotonicCount = 0;
 
 void update_events() {
     if (serial_isdata()) {
@@ -466,7 +468,56 @@ static EFI_STATUS EFIAPI efi_WaitForEvent(UINTN NumberOfEvents,
 STUB(RaiseTPL,                      EFI_SUCCESS)
 STUB(RestoreTPL,                    EFI_SUCCESS)
 STUB(FreePages,                     EFI_SUCCESS)
-STUB(CreateEvent,                   EFI_SUCCESS)
+static EFI_STATUS EFIAPI efi_CreateEvent(
+    UINT32 Type, EFI_TPL NotifyTpl,
+    void *NotifyFunction, void *NotifyContext,
+    EFI_EVENT *Event
+) {
+    serial_puts("[EFI] CreateEvent type=0x");
+    serial_putx(Type);
+    serial_puts(" tpl=0x");
+    serial_putx(NotifyTpl);
+    serial_puts("\n");
+
+    if (!Event) return EFI_INVALID_PARAMETER;
+
+    INTERNAL_EVENT *ev = malloc(sizeof(INTERNAL_EVENT));
+    if (!ev) return EFI_OUT_OF_RESOURCES;
+
+    ev->signaled = 0;
+    ev->notify   = NotifyFunction;
+    ev->context  = NotifyContext;
+    ev->type     = (uint8_t)Type;
+    *Event = ev;
+
+    serial_puts("[EFI] CreateEvent -> event=0x");
+    serial_putx((uint64_t)ev);
+    serial_puts("\n");
+    return EFI_SUCCESS;
+}
+
+static EFI_STATUS EFIAPI efi_CreateEventEx(
+    UINT32 Type, EFI_TPL NotifyTpl,
+    void *NotifyFunction, void *NotifyContext,
+    EFI_GUID *EventGroup, EFI_EVENT *Event
+) {
+    serial_puts("[EFI] CreateEventEx type=0x");
+    serial_putx(Type);
+    serial_puts("\n");
+    (void)EventGroup; // event groups not supported
+
+    if (!Event) return EFI_INVALID_PARAMETER;
+    INTERNAL_EVENT *ev = malloc(sizeof(INTERNAL_EVENT));
+    if (!ev) return EFI_OUT_OF_RESOURCES;
+
+    ev->signaled = 0;
+    ev->notify   = NotifyFunction;
+    ev->context  = NotifyContext;
+    ev->type     = (uint8_t)Type;
+    *Event = ev;
+    return EFI_SUCCESS;
+}
+
 STUB(SetTimer,                      EFI_SUCCESS)
 STUB(SignalEvent,                   EFI_SUCCESS)
 STUB(CloseEvent,                    EFI_SUCCESS)
@@ -479,8 +530,38 @@ STUB(InstallConfigurationTable,     EFI_SUCCESS)
 STUB(LoadImage,                     EFI_UNSUPPORTED)
 STUB(StartImage,                    EFI_UNSUPPORTED)
 STUB(UnloadImage,                   EFI_UNSUPPORTED)
-STUB(ExitBootServices,              EFI_SUCCESS)
-STUB(GetNextMonotonicCount,         EFI_SUCCESS)
+
+static EFI_STATUS EFIAPI efi_ExitBootServices(
+    EFI_HANDLE ImageHandle, UINTN MapKey
+) {
+    serial_puts("[EFI] ExitBootServices key=0x");
+    serial_putx(MapKey);
+    serial_puts(" current_key=0x");
+    serial_putx(map_key);
+    serial_puts("\n");
+
+    (void)ImageHandle;
+
+    if (MapKey != map_key) {
+        serial_puts("[EFI] ExitBootServices: invalid map key\n");
+        return EFI_INVALID_PARAMETER;
+    }
+
+    gExitedBootServices = 1;
+    serial_puts("[EFI] ExitBootServices: SUCCESS — boot services disabled\n");
+    return EFI_SUCCESS;
+}
+
+static EFI_STATUS EFIAPI efi_GetNextMonotonicCount(
+    UINT64 *Count
+) {
+    if (!Count) return EFI_INVALID_PARAMETER;
+    *Count = gMonotonicCount++;
+    serial_puts("[EFI] GetNextMonotonicCount count=0x");
+    serial_putx(*Count);
+    serial_puts("\n");
+    return EFI_SUCCESS;
+}
 STUB(SetWatchdogTimer,              EFI_SUCCESS)
 STUB(ConnectController,             EFI_NOT_FOUND)
 STUB(DisconnectController,          EFI_SUCCESS)
@@ -662,7 +743,7 @@ static EFI_BOOT_SERVICES gBootServices = {
     .GetMemoryMap                       = (void*)efi_GetMemoryMap,
     .AllocatePool                       = (void*)efi_AllocatePool,
     .FreePool                           = (void*)stub_FreePool,
-    .CreateEvent                        = (void*)stub_CreateEvent,
+    .CreateEvent                        = (void*)efi_CreateEvent,
     .SetTimer                           = (void*)stub_SetTimer,
     .WaitForEvent                       = (void*)efi_WaitForEvent,
     .SignalEvent                        = (void*)stub_SignalEvent,
@@ -681,8 +762,8 @@ static EFI_BOOT_SERVICES gBootServices = {
     .StartImage                         = (void*)stub_StartImage,
     .Exit                               = stub_Exit,
     .UnloadImage                        = (void*)stub_UnloadImage,
-    .ExitBootServices                   = (void*)stub_ExitBootServices,
-    .GetNextMonotonicCount              = (void*)stub_GetNextMonotonicCount,
+    .ExitBootServices                   = (void*)efi_ExitBootServices,
+    .GetNextMonotonicCount              = (void*)efi_GetNextMonotonicCount,
     .Stall                              = (void*)stub_Stall,
     .SetWatchdogTimer                   = (void*)stub_SetWatchdogTimer,
     .ConnectController                  = (void*)stub_ConnectController,
@@ -698,7 +779,7 @@ static EFI_BOOT_SERVICES gBootServices = {
     .CalculateCrc32                     = (void*)efi_CalculateCrc32,
     .CopyMem                            = stub_CopyMem,
     .SetMem                             = stub_SetMem,
-    .CreateEventEx                      = (void*)stub_CreateEvent, // reuse
+    .CreateEventEx                      = (void*)efi_CreateEventEx,
 };
 
 // ── runtime services table ────────────────────────────────────────
@@ -804,6 +885,7 @@ void format_system_table(EFI_SYSTEM_TABLE *st) {
 }
 
 void format_handle_data(EFI_IMAGE_HANDLE_DATA* handle_data, EFI_SYSTEM_TABLE *st, uint32_t image_size, uint8_t* load_base) {
+    handle_data->loaded_image.Revision    = EFI_LOADED_IMAGE_PROTOCOL_REVISION;
     handle_data->loaded_image.ImageBase   = load_base;
     handle_data->loaded_image.ImageSize   = image_size;
     handle_data->loaded_image.SystemTable = st;

@@ -22,7 +22,7 @@ typedef uint16_t  UINT16;
 typedef uint8_t   UINT8;
 typedef uint16_t  CHAR16;
 typedef void      VOID;
-typedef int       BOOLEAN;
+typedef uint8_t   BOOLEAN;
 
 #define EFIAPI __attribute__((ms_abi))
 #define NULL (void*)0

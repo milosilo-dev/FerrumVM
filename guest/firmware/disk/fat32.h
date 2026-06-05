@@ -49,3 +49,5 @@ int next_dir_entry(Fat32_Handle* fs, DirEntry** out_entry);
 int open_dir_entry(Fat32_Handle* fs, DirEntry* entry);
 int read_file(Fat32_Handle* fs, DirEntry* entry, uint8_t* buf, uint32_t buf_size);
 int read_file_offset(Fat32_Handle* fs, DirEntry* entry, uint8_t* buf, uint32_t buf_size, uint32_t read_offset);
+uint32_t cluster_to_lba(Fat32_Handle* fs, uint32_t cluster);
+int read_fat_entry(Fat32_Handle* fs, uint32_t cluster, uint32_t* next_cluster);
