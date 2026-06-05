@@ -516,31 +516,34 @@ static EFI_STATUS EFIAPI efi_HandleProtocol(
         return EFI_INVALID_PARAMETER;
     }
 
-    if (efi_guid_match(protocol, &gEfiDevicePathProtocolGuid)) {
-        DISK_PATH* dp = (DISK_PATH*)*interface;
-        serial_puts("[EFI] DevicePath Type=");
-        serial_putx(dp->Hd.Header.Type);
-        serial_puts(" SubType=");
-        serial_putx(dp->Hd.Header.SubType);
-        serial_puts(" PartNum=");
-        serial_putx(dp->Hd.PartitionNumber);
-        serial_puts(" Start=");
-        serial_putx(dp->Hd.PartitionStart);
-        serial_puts(" Size=");
-        serial_putx(dp->Hd.PartitionSize);
-        serial_puts(" SigType=");
-        serial_putx(dp->Hd.SignatureType);
-        serial_puts(" Sig=");
-        for (int i = 0; i < 16; i++) serial_putx(dp->Hd.Signature[i]);
-        serial_puts("\n");
-    }
-
     serial_puts("handle=");
     serial_putx((uint64_t)handle);
     serial_puts(" ret=");
     
     void* found = efi_find_protocol(handle, protocol);
-    if (found) { *interface = found; serial_puts("efi_sucsess\n"); return EFI_SUCCESS; }
+    if (found) {
+        *interface = found;
+        if (efi_guid_match(protocol, &gEfiDevicePathProtocolGuid)) {
+            DISK_PATH* dp = (DISK_PATH*)*interface;
+            serial_puts("[EFI] DevicePath Type=");
+            serial_putx(dp->Hd.Header.Type);
+            serial_puts(" SubType=");
+            serial_putx(dp->Hd.Header.SubType);
+            serial_puts(" PartNum=");
+            serial_putx(dp->Hd.PartitionNumber);
+            serial_puts(" Start=");
+            serial_putx(dp->Hd.PartitionStart);
+            serial_puts(" Size=");
+            serial_putx(dp->Hd.PartitionSize);
+            serial_puts(" SigType=");
+            serial_putx(dp->Hd.SignatureType);
+            serial_puts(" Sig=");
+            for (int i = 0; i < 16; i++) serial_putx(dp->Hd.Signature[i]);
+            serial_puts("\n");
+        }
+        serial_puts("efi_sucsess\n");
+        return EFI_SUCCESS;
+    }
 
     if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
         serial_puts("LoadedImage DeviceHandle=");
