@@ -1,5 +1,5 @@
-use std::io::Write;
 use kvm_ioctls::VcpuExit;
+use std::io::Write;
 
 use crate::vm::vm::VirtualMachine;
 
@@ -25,7 +25,9 @@ impl VirtualMachine {
                 if let Some(data) = region.read(offset, available) {
                     print!("dump at {:#x}: ", addr);
                     for (i, b) in data.iter().enumerate().take(64) {
-                        if i > 0 && i % 16 == 0 { print!("\n{:16}", ""); }
+                        if i > 0 && i % 16 == 0 {
+                            print!("\n{:16}", "");
+                        }
                         print!("{:02x} ", b);
                     }
                     println!();
@@ -105,9 +107,18 @@ impl VirtualMachine {
                 let regs = self.vcpu.fd.get_regs().unwrap();
                 let sregs = self.vcpu.fd.get_sregs().unwrap();
                 eprintln!("SHUTDOWN at RIP={:#x}", regs.rip);
-                eprintln!("RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}", regs.rax, regs.rbx, regs.rcx, regs.rdx);
-                eprintln!("CR0={:#x} CR3={:#x} CR4={:#x} EFER={:#x}", sregs.cr0, sregs.cr3, sregs.cr4, sregs.efer);
-                eprintln!("CS base={:#x} selector={:#x} type={:#x} l={}", sregs.cs.base, sregs.cs.selector, sregs.cs.type_, sregs.cs.l);
+                eprintln!(
+                    "RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}",
+                    regs.rax, regs.rbx, regs.rcx, regs.rdx
+                );
+                eprintln!(
+                    "CR0={:#x} CR3={:#x} CR4={:#x} EFER={:#x}",
+                    sregs.cr0, sregs.cr3, sregs.cr4, sregs.efer
+                );
+                eprintln!(
+                    "CS base={:#x} selector={:#x} type={:#x} l={}",
+                    sregs.cs.base, sregs.cs.selector, sregs.cs.type_, sregs.cs.l
+                );
                 return Err(CrashReason::Shutdown);
             }
             exit_reason => {

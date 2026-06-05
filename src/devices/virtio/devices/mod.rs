@@ -1,3 +1,3 @@
-pub mod rng;
-pub mod counter;
 pub mod blk;
+pub mod counter;
+pub mod rng;

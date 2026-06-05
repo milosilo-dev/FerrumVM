@@ -1,6 +1,6 @@
 // Fully generate a new FADT binary programiaticly
 
-use crate::machine_config::binary::{Binary};
+use crate::machine_config::binary::Binary;
 
 pub fn build_fadt(dsdt_addr: u64) -> Binary {
     let mut fadt = vec![0u8; 240]; // FADT length (ACPI 5.0)
@@ -31,8 +31,5 @@ pub fn build_fadt(dsdt_addr: u64) -> Binary {
     }
     fadt[9] = sum.wrapping_neg(); // Set checksum so total sum is 0
 
-    Binary::new(
-        fadt,
-        0xE0400,
-    )
+    Binary::new(fadt, 0xE0400)
 }

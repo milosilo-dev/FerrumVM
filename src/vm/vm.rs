@@ -2,7 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use kvm_ioctls::VmFd;
 
-use crate::{device_maps::{io::IODeviceMap, mmio::MMIODeviceMap}, memory_region::GuestMemoryHandle, vcpu::VCPU};
+use crate::{
+    device_maps::{io::IODeviceMap, mmio::MMIODeviceMap},
+    memory_region::GuestMemoryHandle,
+    vcpu::VCPU,
+};
 
 pub struct VirtualMachine {
     pub(crate) vcpu: VCPU,

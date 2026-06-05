@@ -13,10 +13,10 @@ typedef struct {
 #define IMAGE_REL_BASED_DIR64    10
 
 static void dump_ptr(const char* name, void* ptr) {
-    serial_puts(name);
-    serial_puts(" = 0x");
-    serial_putx((uint64_t)ptr);
-    serial_puts("\n");
+    serial2_puts(name);
+    serial2_puts(" = 0x");
+    serial2_putx((uint64_t)ptr);
+    serial2_puts("\n");
 }
 
 static void apply_relocations(uint8_t* load_base, IMAGE_NT_HEADERS64* nt) {
@@ -26,12 +26,12 @@ static void apply_relocations(uint8_t* load_base, IMAGE_NT_HEADERS64* nt) {
     // ---- VALIDATE DIRECTORY ----
     uint32_t dir_count = nt->OptionalHeader.NumberOfRvaAndSizes;
     if (IMAGE_DIRECTORY_ENTRY_BASERELOC >= dir_count) {
-        serial_puts("pe_exe: no reloc dir\n");
+        serial2_puts("pe_exe: no reloc dir\n");
         return;
     }
 
     if (reloc_dir->Size == 0 || reloc_dir->VirtualAddress == 0) {
-        serial_puts("pe_exe: empty reloc dir\n");
+        serial2_puts("pe_exe: empty reloc dir\n");
         return;
     }
 
@@ -77,14 +77,14 @@ void format_pe(uint8_t* exe) {
     EFI_IMAGE_DOS_HEADER* dos = (EFI_IMAGE_DOS_HEADER*)exe;
 
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) {
-        serial_puts("pe_exe: bad DOS magic\n");
+        serial2_puts("pe_exe: bad DOS magic\n");
         return;
     }
 
     IMAGE_NT_HEADERS64* nt = (IMAGE_NT_HEADERS64*)(exe + dos->e_lfanew);
 
     if (nt->Signature != IMAGE_NT_SIGNATURE) {
-        serial_puts("pe_exe: bad NT sig\n");
+        serial2_puts("pe_exe: bad NT sig\n");
         return;
     }
 
@@ -92,12 +92,12 @@ void format_pe(uint8_t* exe) {
     uint16_t opt_size = nt->FileHeader.SizeOfOptionalHeader;
 
     if (nt->OptionalHeader.Magic != 0x20B) {
-        serial_puts("pe_exe: not PE32+\n");
+        serial2_puts("pe_exe: not PE32+\n");
         return;
     }
 
     if (nt->OptionalHeader.Subsystem != IMAGE_SUBSYSTEM_EFI_APPLICATION) {
-        serial_puts("refusing non-EFI PE\n");
+        serial2_puts("refusing non-EFI PE\n");
         return;
     }
 
@@ -164,17 +164,17 @@ void format_pe(uint8_t* exe) {
     uint64_t stack_bottom = rsp - 0x100000;
 
     if ((uint64_t)heap_ptr >= stack_bottom && (uint64_t)heap_ptr <= rsp) {
-        serial_puts("ERROR: heap overlaps stack!\n");
+        serial2_puts("ERROR: heap overlaps stack!\n");
     } else if ((uint64_t)load_base + nt->OptionalHeader.SizeOfImage >= (uint64_t)heap_ptr && 
              (uint64_t)load_base < (uint64_t)heap_end) {
-        serial_puts("ERROR: heap overlaps PE!\n");
+        serial2_puts("ERROR: heap overlaps PE!\n");
     }
 
     // ---- CALL ENTRY ----
     EFI_STATUS status;
     uint64_t saved_rsp;
 
-    serial_puts("------------------ { Firmware init --> image } ------------------\n");
+    serial2_puts("------------------ { Firmware init --> image } ------------------\n");
 
     __asm__ volatile (
         "mov %%rsp, %[sr]\n"
@@ -193,7 +193,7 @@ void format_pe(uint8_t* exe) {
         : "rcx","rdx","memory"
     );
 
-    serial_puts("pe_exe: entry returned = ");
-    serial_putx(status);
-    serial_puts("\n");
+    serial2_puts("pe_exe: entry returned = ");
+    serial2_putx(status);
+    serial2_puts("\n");
 }

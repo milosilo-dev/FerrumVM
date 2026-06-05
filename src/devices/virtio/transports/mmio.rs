@@ -1,6 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{device_maps::mmio::MMIODevice, devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue}, irq::handler::{IRQCommand, IRQHandler}, memory_region::GuestMemoryHandle};
+use crate::{
+    device_maps::mmio::MMIODevice,
+    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
+    irq::handler::{IRQCommand, IRQHandler},
+    memory_region::GuestMemoryHandle,
+};
 
 const MAGIC_NUMBER: u32 = 0x74726976;
 const VERSION: u32 = 0x2;
@@ -26,7 +31,7 @@ pub struct MMIOTransport {
 }
 
 impl MMIOTransport {
-    pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize) -> Self{
+    pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize) -> Self {
         Self {
             device,
             queues: vec![VirtioQueue::new(); queue_num],
@@ -59,13 +64,14 @@ impl MMIODevice for MMIOTransport {
             0x070 => self.status,
             0x060 => self.interrupt_status,
             _ => 0,
-        } as u64).to_le_bytes();
+        } as u64)
+            .to_le_bytes();
         value[..length].to_vec()
     }
 
     fn write(&mut self, addr: u64, data: &[u8]) {
-        match addr{
-            0x028 => {},
+        match addr {
+            0x028 => {}
             0x030 => self.queue_sel = data[data.len() - 1] as usize,
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
             0x044 => {
@@ -74,8 +80,8 @@ impl MMIODevice for MMIOTransport {
                 if !was_ready && data[0] != 0 {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
-            },
-            0x060 => {},
+            }
+            0x060 => {}
             0x070 => {
                 let val = read_u32_from_data(data);
                 if val == 0 {
@@ -85,27 +91,27 @@ impl MMIODevice for MMIOTransport {
                     self.interrupt_status = 0;
                 }
                 self.status = val;
-            },
+            }
             0x080 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0xFFFFFFFF00000000) | val;
-            },
+            }
             0x084 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0x00000000FFFFFFFF) | val;
-            },
+            }
             0x090 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0xFFFFFFFF00000000) | val;
-            },
+            }
             0x094 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0x00000000FFFFFFFF) | val;
-            },
+            }
             0x0A0 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
@@ -115,20 +121,21 @@ impl MMIODevice for MMIOTransport {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0x00000000FFFFFFFF) | val;
-            },
+            }
             _ => {}
         }
     }
 
     fn pass_guest_memory(&mut self, guest_memory: GuestMemoryHandle) {
-        self.device.pass_guest_memory(VirtioGuestMemoryHandle::new(guest_memory));
+        self.device
+            .pass_guest_memory(VirtioGuestMemoryHandle::new(guest_memory));
     }
 
     fn tick(&mut self) {
-        for queue in &mut self.queues{
-            if queue.ready{
+        for queue in &mut self.queues {
+            if queue.ready {
                 let completions = self.device.as_mut().tick(queue);
-                if completions && self.irq_line.is_some(){
+                if completions && self.irq_line.is_some() {
                     self.irq_line
                         .as_mut()
                         .unwrap()

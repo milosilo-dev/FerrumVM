@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use kvm_bindings::kvm_cpuid2;
 use kvm_bindings::{kvm_regs, kvm_segment};
 use kvm_ioctls::{VcpuFd, VmFd};
-use kvm_bindings::kvm_cpuid2;
 use vmm_sys_util::fam::FamStructWrapper;
 
 pub struct VCPU {
@@ -14,7 +14,7 @@ fn real_mode_code_seg(base: u64, selector: u16) -> kvm_segment {
         base,
         limit: 0xFFFF,
         selector,
-        type_: 0xA,   // execute/read
+        type_: 0xA, // execute/read
         present: 1,
         dpl: 0,
         db: 0,
@@ -32,7 +32,7 @@ fn real_mode_data_seg(base: u64, selector: u16) -> kvm_segment {
         base,
         limit: 0xFFFF,
         selector,
-        type_: 0x2,   // read/write
+        type_: 0x2, // read/write
         present: 1,
         dpl: 0,
         db: 0,
@@ -58,7 +58,11 @@ fn filter_cpuid(cpuid: &mut FamStructWrapper<kvm_cpuid2>) {
 }
 
 impl VCPU {
-    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize, mut cpuid: &mut vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>) -> Self {
+    pub fn new(
+        vm: Arc<Mutex<VmFd>>,
+        entry: usize,
+        mut cpuid: &mut vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>,
+    ) -> Self {
         let vm_lock = vm.lock().unwrap();
         let vcpu = vm_lock.create_vcpu(0).unwrap();
 

@@ -1,4 +1,7 @@
-use std::{ptr, sync::{Arc, Mutex}};
+use std::{
+    ptr,
+    sync::{Arc, Mutex},
+};
 
 pub struct MemoryRegion {
     ptr: *mut u8,
@@ -11,11 +14,11 @@ pub type GuestMemoryHandle = Arc<Mutex<Vec<MemoryRegion>>>;
 unsafe impl Send for MemoryRegion {}
 
 impl MemoryRegion {
-    pub fn new(ptr: *mut u8, mem_size: usize, mem_offset: u64) -> Self{
+    pub fn new(ptr: *mut u8, mem_size: usize, mem_offset: u64) -> Self {
         Self {
             ptr,
             mem_size: mem_size,
-            mem_offset: mem_offset
+            mem_offset: mem_offset,
         }
     }
 
@@ -26,12 +29,7 @@ impl MemoryRegion {
         }
 
         unsafe {
-            ptr::copy_nonoverlapping(
-                data.as_ptr(),
-                self.ptr
-                    .add(addr),
-                data.len(),
-            );
+            ptr::copy_nonoverlapping(data.as_ptr(), self.ptr.add(addr), data.len());
         }
     }
 

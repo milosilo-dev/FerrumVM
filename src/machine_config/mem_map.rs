@@ -1,21 +1,21 @@
 #[derive(Clone)]
 pub enum MemType {
     // Used by UEFI
-    Reserved            = 0,
-    LoaderCode          = 1,
-    LoaderData          = 2,
-    BootServicesCode    = 3,
-    BootServicesData    = 4,
+    Reserved = 0,
+    LoaderCode = 1,
+    LoaderData = 2,
+    BootServicesCode = 3,
+    BootServicesData = 4,
     RuntimeServicesCode = 5,
     RuntimeServicesData = 6,
-    ConventionalMemory  = 7,
-    Unusable            = 8,
-    ACPIReclaimMemory   = 9,
-    ACPIMemoryNVS       = 10,
-    MMIO                = 11,
+    ConventionalMemory = 7,
+    Unusable = 8,
+    ACPIReclaimMemory = 9,
+    ACPIMemoryNVS = 10,
+    MMIO = 11,
 }
 
-pub struct MemMap{
+pub struct MemMap {
     pub start: u64,
     pub end: u64,
     pub mem_type: u32,
@@ -31,12 +31,12 @@ impl MemMap {
         start.extend_from_slice(&mem_type);
 
         start
-    } 
+    }
 }
 
-pub struct MemMapHeader{
+pub struct MemMapHeader {
     pub mgk_num: u32,
-    pub length: u32
+    pub length: u32,
 }
 
 impl MemMapHeader {
@@ -46,5 +46,5 @@ impl MemMapHeader {
 
         mgk_num.extend_from_slice(&length);
         mgk_num
-    } 
+    }
 }

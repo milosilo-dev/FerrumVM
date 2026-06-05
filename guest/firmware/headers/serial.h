@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #define COM1 0x3F8
+#define COM2 0x2F8
 
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -90,4 +91,37 @@ serial_input(char *buf, uint32_t length) {
 
 static bool __attribute__((noinline)) serial_isdata() {
     return (inb(COM1 + 5) & 0x01) != 0;
+}
+
+static inline void serial2_init(void) {
+    outb(COM2 + 1, 0x00);   // disable interrupts
+    outb(COM2 + 3, 0x80);   // enable DLAB (set baud rate divisor)
+    outb(COM2 + 0, 0x03);   // divisor low  = 3 → 38400 baud
+    outb(COM2 + 1, 0x00);   // divisor high = 0
+    outb(COM2 + 3, 0x03);   // 8 bits, no parity, one stop bit
+    outb(COM2 + 2, 0xC7);   // enable FIFO, clear, 14-byte threshold
+    outb(COM2 + 4, 0x0B);   // IRQs enabled, RTS/DSR set
+}
+
+static inline void serial2_putc(char c) {
+    // Spin until transmit buffer is empty (bit 5 of Line Status Register)
+    while ((inb(COM2 + 5) & 0x20) == 0);
+    outb(COM2, (uint8_t)c);
+}
+
+static void __attribute__((noinline)) serial2_putx(uint32_t x) {
+    char s[11];  // "0x" + 8 hex digits + null terminator
+    int_to_hex(x, s);
+
+    char *p = s;
+    while (*p) {
+        serial2_putc(*p++);
+    }
+}
+
+static void __attribute__((noinline)) serial2_puts(const char *s) {
+    while (*s) {
+        if (*s == '\n') serial2_putc('\r');  // CRLF for terminals
+        serial2_putc(*s++);
+    }
 }

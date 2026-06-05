@@ -21,7 +21,7 @@ static EFI_STATUS EFIAPI efi_con_in_reset(
     EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
     BOOLEAN ExtendedVerification
 ) {
-    serial_puts("[STUB] ConInReset");
+    serial2_puts("[STUB] ConInReset");
     return EFI_SUCCESS;
 }
 
@@ -32,14 +32,14 @@ static EFI_STATUS EFIAPI efi_read_key_stroke(
     if (!serial_isdata()) {
         Key->ScanCode    = 0;
         Key->UnicodeChar = 0;
-        serial_puts("[STIP] ReadKeyStroke: no data\n");
+        serial2_puts("[STIP] ReadKeyStroke: no data\n");
         return EFI_NOT_READY;
     }
     Key->ScanCode    = 0;
     Key->UnicodeChar = inb(COM1);
-    serial_puts("[STIP] ReadKeyStroke: got char=");
-    serial_putx(Key->UnicodeChar);
-    serial_puts("\n");
+    serial2_puts("[STIP] ReadKeyStroke: got char=");
+    serial2_putx(Key->UnicodeChar);
+    serial2_puts("\n");
     return EFI_SUCCESS;
 }
 

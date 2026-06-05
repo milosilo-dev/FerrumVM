@@ -3,7 +3,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{irq::handler::IRQHandler, memory_region::{GuestMemoryHandle, MemoryRegion}};
+use crate::{
+    irq::handler::IRQHandler,
+    memory_region::{GuestMemoryHandle, MemoryRegion},
+};
 
 pub trait MMIODevice: Send {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;
@@ -48,7 +51,7 @@ impl MMIODeviceRegion {
         self.mmio_device.tick();
     }
 
-    pub fn pass_guest_memory(&mut self, guest_memory:Arc<Mutex<Vec<MemoryRegion>>>) {
+    pub fn pass_guest_memory(&mut self, guest_memory: Arc<Mutex<Vec<MemoryRegion>>>) {
         self.mmio_device.pass_guest_memory(guest_memory);
     }
 

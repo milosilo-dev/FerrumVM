@@ -1,4 +1,4 @@
-use crate::machine_config::binary::{Binary};
+use crate::machine_config::binary::Binary;
 
 pub fn build_rsdp(xsdt_addr: u64) -> Binary {
     let mut rsdp = vec![0u8; 36];

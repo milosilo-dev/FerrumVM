@@ -8,18 +8,16 @@ pub trait VirtioDevice {
     fn read_config(&self, length: usize) -> Vec<u8>;
 }
 
-pub struct VirtioGuestMemoryHandle{
+pub struct VirtioGuestMemoryHandle {
     mem: GuestMemoryHandle,
 }
 
 impl VirtioGuestMemoryHandle {
     pub fn new(mem: GuestMemoryHandle) -> Self {
-        Self{
-            mem
-        }
+        Self { mem }
     }
 
-    pub fn read_u16(&self, addr: u64) -> u16{
+    pub fn read_u16(&self, addr: u64) -> u16 {
         const LENGTH: u64 = 2;
 
         let borrow = self.mem.lock().unwrap();
@@ -27,7 +25,9 @@ impl VirtioGuestMemoryHandle {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
             if addr >= start && addr + LENGTH <= end {
-                let data = mem_region.read((addr - mem_region.mem_offset) as usize, LENGTH as usize).unwrap();
+                let data = mem_region
+                    .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
+                    .unwrap();
                 return u16::from_le_bytes([data[0], data[1]]);
             }
         }
@@ -36,7 +36,7 @@ impl VirtioGuestMemoryHandle {
         0
     }
 
-    pub fn read_u32(&self, addr: u64) -> u32{
+    pub fn read_u32(&self, addr: u64) -> u32 {
         const LENGTH: u64 = 4;
 
         let borrow = self.mem.lock().unwrap();
@@ -44,7 +44,9 @@ impl VirtioGuestMemoryHandle {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
             if addr >= start && addr + LENGTH <= end {
-                let data = mem_region.read((addr - mem_region.mem_offset) as usize, LENGTH as usize).unwrap();
+                let data = mem_region
+                    .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
+                    .unwrap();
                 return u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
             }
         }
@@ -53,7 +55,7 @@ impl VirtioGuestMemoryHandle {
         0
     }
 
-    pub fn read_u64(&self, addr: u64) -> u64{
+    pub fn read_u64(&self, addr: u64) -> u64 {
         const LENGTH: u64 = 8;
 
         let borrow = self.mem.lock().unwrap();
@@ -61,8 +63,12 @@ impl VirtioGuestMemoryHandle {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
             if addr >= start && addr + LENGTH <= end {
-                let data = mem_region.read((addr - mem_region.mem_offset) as usize, LENGTH as usize).unwrap();
-                return u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]);
+                let data = mem_region
+                    .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
+                    .unwrap();
+                return u64::from_le_bytes([
+                    data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+                ]);
             }
         }
 
@@ -70,20 +76,22 @@ impl VirtioGuestMemoryHandle {
         0
     }
 
-    pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>){
+    pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>) {
         let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
             if addr >= start && addr + buf.len() as u64 <= end {
-                let data = mem_region.read((addr - mem_region.mem_offset) as usize, buf.len()).unwrap();
+                let data = mem_region
+                    .read((addr - mem_region.mem_offset) as usize, buf.len())
+                    .unwrap();
                 *buf = data;
                 return;
             }
         }
     }
 
-    pub fn write_u8(&mut self, addr: u64, val: u8){
+    pub fn write_u8(&mut self, addr: u64, val: u8) {
         const LENGTH: u64 = 1;
 
         let borrow = self.mem.lock().unwrap();
@@ -99,7 +107,7 @@ impl VirtioGuestMemoryHandle {
         println!("Virtio wrote a addr outside of mapped scope!");
     }
 
-    pub fn write_u16(&mut self, addr: u64, val: u16){
+    pub fn write_u16(&mut self, addr: u64, val: u16) {
         const LENGTH: u64 = 2;
 
         let borrow = self.mem.lock().unwrap();
@@ -115,7 +123,7 @@ impl VirtioGuestMemoryHandle {
         println!("Virtio wrote a addr outside of mapped scope!");
     }
 
-    pub fn write_u32(&mut self, addr: u64, val: u32){
+    pub fn write_u32(&mut self, addr: u64, val: u32) {
         const LENGTH: u64 = 4;
 
         let borrow = self.mem.lock().unwrap();
@@ -131,7 +139,7 @@ impl VirtioGuestMemoryHandle {
         println!("Virtio wrote a addr outside of mapped scope!");
     }
 
-    pub fn write_guest_memory(&mut self, addr: u64, data: &[u8]){
+    pub fn write_guest_memory(&mut self, addr: u64, data: &[u8]) {
         let borrow = self.mem.lock().unwrap();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
@@ -164,8 +172,8 @@ pub struct VirtioQueue {
 }
 
 impl VirtioQueue {
-    pub fn new() -> Self{
-        Self{
+    pub fn new() -> Self {
+        Self {
             size: 0,
             ready: false,
             desc_addr: 0,
@@ -177,7 +185,7 @@ impl VirtioQueue {
 
     pub fn pop_avail(&mut self, mem: &VirtioGuestMemoryHandle) -> Option<u16> {
         let avail_idx = mem.read_u16(self.avail_addr + 2);
-        
+
         if self.last_avail_idx == avail_idx {
             return None;
         }
@@ -204,16 +212,15 @@ impl VirtioQueue {
         let desc_addr = self.desc_addr + (index as u64) * 16;
 
         VirtqDesc {
-            addr:  mem.read_u64(desc_addr + 0),
-            len:   mem.read_u32(desc_addr + 8),
+            addr: mem.read_u64(desc_addr + 0),
+            len: mem.read_u32(desc_addr + 8),
             flags: mem.read_u16(desc_addr + 12),
-            next:  mem.read_u16(desc_addr + 14),
+            next: mem.read_u16(desc_addr + 14),
         }
     }
 
     pub fn read_avail_entry(&self, mem: &VirtioGuestMemoryHandle, idx: u16) -> u16 {
-        let ring_offset =
-            4 + ((idx % self.size) as u64) * 2;
+        let ring_offset = 4 + ((idx % self.size) as u64) * 2;
 
         mem.read_u16(self.avail_addr + ring_offset)
     }

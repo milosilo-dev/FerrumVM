@@ -1,19 +1,17 @@
 use vmm_sys_util::rand;
 
-use crate::{devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue}};
+use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
 
 pub struct RngVirtio {
     guest_memory: Option<VirtioGuestMemoryHandle>,
 }
 
 impl RngVirtio {
-    pub fn new() -> Self{
-        Self{
-            guest_memory: None
-        }
+    pub fn new() -> Self {
+        Self { guest_memory: None }
     }
 
-    pub fn get_random(length: usize) -> Vec<u8>{
+    pub fn get_random(length: usize) -> Vec<u8> {
         rand::rand_bytes(length)
     }
 }
@@ -32,7 +30,7 @@ impl VirtioDevice for RngVirtio {
     }
 
     fn tick(&mut self, queue: &mut VirtioQueue) -> bool {
-        if self.guest_memory.is_none(){
+        if self.guest_memory.is_none() {
             return false;
         }
 
@@ -57,5 +55,7 @@ impl VirtioDevice for RngVirtio {
         did_work
     }
 
-    fn read_config(&self, _length: usize) -> Vec<u8> {vec![]}
+    fn read_config(&self, _length: usize) -> Vec<u8> {
+        vec![]
+    }
 }

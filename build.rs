@@ -32,11 +32,7 @@ fn run(cmd: &str, args: &[&str], error: &str) {
 fn build_acpi() {
     let dsdt = format!("{ACPI_DIR}/DSDT.dsl");
 
-    run(
-        ASL,
-        &["-tc", &dsdt],
-        "failed to compile DSDT",
-    );
+    run(ASL, &["-tc", &dsdt], "failed to compile DSDT");
 }
 
 fn assemble(input: &str, output: &str, format: &str) {
@@ -91,12 +87,7 @@ fn compile_c64(input: &str, output: &str) {
     );
 }
 
-fn link(
-    output: &str,
-    linker_script: &str,
-    inputs: &[&str],
-    extra_args: &[&str],
-) {
+fn link(output: &str, linker_script: &str, inputs: &[&str], extra_args: &[&str]) {
     let mut args = Vec::new();
 
     args.extend_from_slice(extra_args);
@@ -145,16 +136,10 @@ fn build_firmware() {
     // ===== C =====
 
     let main32_o = format!("{BUILD_DIR}/main.o");
-    compile_c32(
-        &format!("{FIRMWARE_DIR}/main.c"),
-        &main32_o,
-    );
+    compile_c32(&format!("{FIRMWARE_DIR}/main.c"), &main32_o);
 
     let main64_o = format!("{BUILD_DIR}/main64.o");
-    compile_c64(
-        &format!("{FIRMWARE_DIR}/main64.c"),
-        &main64_o,
-    );
+    compile_c64(&format!("{FIRMWARE_DIR}/main64.c"), &main64_o);
 
     // ===== 64-bit firmware =====
 

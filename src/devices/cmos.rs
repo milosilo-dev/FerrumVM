@@ -35,7 +35,7 @@ pub struct Cmos {
     squ_wave: bool,
     binary: bool,
     hour_12: bool,
-    ds_enable: bool
+    ds_enable: bool,
 }
 
 fn to_bcd(val: u8) -> u8 {
@@ -77,7 +77,11 @@ impl IODevice for Cmos {
                     vec![val; length]
                 }
                 CmosRegister::Hour => {
-                    let val = if self.hour_12 {Utc::now().hour12().1 as u8} else {Utc::now().hour() as u8};
+                    let val = if self.hour_12 {
+                        Utc::now().hour12().1 as u8
+                    } else {
+                        Utc::now().hour() as u8
+                    };
                     let val = if self.binary { val } else { to_bcd(val) };
                     vec![val; length]
                 }
@@ -98,9 +102,7 @@ impl IODevice for Cmos {
                     vec![(now.year() % 100) as u8; length]
                 }
                 CmosRegister::StatusA => {
-                    let a: u8 = ((self.uip as u8) << 7)
-                        | (self.oscillator << 4)
-                        | self.rate;
+                    let a: u8 = ((self.uip as u8) << 7) | (self.oscillator << 4) | self.rate;
                     vec![a; length]
                 }
                 CmosRegister::StatusB => {
@@ -114,7 +116,7 @@ impl IODevice for Cmos {
                         | (self.ds_enable as u8);
                     vec![b; length]
                 }
-                CmosRegister::StatusC => vec![0; length],  // no IRQ support yet
+                CmosRegister::StatusC => vec![0; length], // no IRQ support yet
                 CmosRegister::StatusD => vec![0x80; length], // bit7 = battery good
                 _ => vec![0; length],
             },
@@ -147,16 +149,16 @@ impl IODevice for Cmos {
             1 => {
                 if let CmosRegister::StatusB = self.reg {
                     let val = data[0];
-                    self.halt               = (val >> 7) & 1 != 0;
-                    self.periodic_irq       = (val >> 6) & 1 != 0;
-                    self.enable_alrm        = (val >> 5) & 1 != 0;
-                    self.enable_up_ended_irq= (val >> 4) & 1 != 0;
-                    self.squ_wave           = (val >> 3) & 1 != 0;
-                    self.binary             = (val >> 2) & 1 != 0;
-                    self.hour_12            = (val >> 1) & 1 == 0; // 0=12hr, 1=24hr
-                    self.ds_enable          = val & 1 != 0;
+                    self.halt = (val >> 7) & 1 != 0;
+                    self.periodic_irq = (val >> 6) & 1 != 0;
+                    self.enable_alrm = (val >> 5) & 1 != 0;
+                    self.enable_up_ended_irq = (val >> 4) & 1 != 0;
+                    self.squ_wave = (val >> 3) & 1 != 0;
+                    self.binary = (val >> 2) & 1 != 0;
+                    self.hour_12 = (val >> 1) & 1 == 0; // 0=12hr, 1=24hr
+                    self.ds_enable = val & 1 != 0;
                 }
-            },
+            }
             _ => {}
         }
     }

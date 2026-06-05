@@ -1,5 +1,8 @@
 use std::{
-    collections::VecDeque, io::{self, Write}, sync::{Arc, Mutex}
+    collections::VecDeque,
+    fs::File,
+    io::{self, Write},
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -12,39 +15,57 @@ use crate::{
     irq::handler::{IRQCommand, IRQHandler},
 };
 
+pub enum SerialMode {
+    Terminal,
+    LogFile(File),
+}
+
 pub struct Serial {
     data: VecDeque<u8>,
     irq_handler: Option<Arc<Mutex<IRQHandler>>>,
     queue: Arc<Mutex<Vec<u8>>>,
+    mode: SerialMode,
 }
 
 impl Serial {
-    pub fn new() -> Self {
-        enable_raw_mode().unwrap();
+    pub fn new(mode: SerialMode) -> Self {
         let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
 
-        std::thread::spawn({
-            let queue = queue.clone();
+        if let SerialMode::Terminal = mode {
+            enable_raw_mode().unwrap();
+            std::thread::spawn({
+                let queue = queue.clone();
 
-            move || loop {
-                match event::read().unwrap() {
-                    Event::Key(KeyEvent { code: KeyCode::Char('z'), kind: KeyEventKind::Press, modifiers: KeyModifiers::CONTROL, .. }) => {
-                        disable_raw_mode().unwrap();
-                        println!("");
-                        std::process::exit(0);
+                move || loop {
+                    match event::read().unwrap() {
+                        Event::Key(KeyEvent {
+                            code: KeyCode::Char('z'),
+                            kind: KeyEventKind::Press,
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        }) => {
+                            disable_raw_mode().unwrap();
+                            println!("");
+                            std::process::exit(0);
+                        }
+                        Event::Key(KeyEvent {
+                            code: KeyCode::Char(c),
+                            kind: KeyEventKind::Press,
+                            ..
+                        }) => {
+                            queue.lock().unwrap().push(c as u8);
+                        }
+                        _ => {}
                     }
-                    Event::Key(KeyEvent { code: KeyCode::Char(c), kind: KeyEventKind::Press, .. }) => {
-                        queue.lock().unwrap().push(c as u8);
-                    }
-                    _ => {}
                 }
-            }
-        });
+            });
+        }
 
         Self {
             data: vec![].into(),
             irq_handler: None,
             queue,
+            mode,
         }
     }
 
@@ -89,12 +110,17 @@ impl IODevice for Serial {
 
     fn output(&mut self, port: u16, data: &[u8]) {
         match port {
-            0 => {
-                for i in 0..data.len() {
-                    print!("{}", data[i] as char);
+            0 => match &mut self.mode {
+                SerialMode::Terminal => {
+                    for i in 0..data.len() {
+                        print!("{}", data[i] as char);
+                    }
+                    io::stdout().flush().unwrap();
                 }
-                io::stdout().flush().unwrap();
-            }
+                SerialMode::LogFile(file) => {
+                    file.write(data).unwrap();
+                }
+            },
             _ => {}
         }
     }

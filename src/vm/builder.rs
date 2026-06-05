@@ -1,11 +1,23 @@
 use std::sync::{Arc, Mutex};
 
-use kvm_bindings::{KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region};
+use kvm_bindings::{
+    KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region,
+};
 use kvm_ioctls::Kvm;
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use vmm_sys_util::fam::FamStructWrapper;
 
-use crate::{device_maps::{io::{IODeviceMap, IODeviceRegion}, mmio::{MMIODeviceMap, MMIODeviceRegion}}, irq::handler::IRQHandler, machine_config::machine_config::MachineConfig, memory_region::MemoryRegion, vcpu::VCPU, vm::{tick::TickContext, vm::VirtualMachine}};
+use crate::{
+    device_maps::{
+        io::{IODeviceMap, IODeviceRegion},
+        mmio::{MMIODeviceMap, MMIODeviceRegion},
+    },
+    irq::handler::IRQHandler,
+    machine_config::machine_config::MachineConfig,
+    memory_region::MemoryRegion,
+    vcpu::VCPU,
+    vm::{tick::TickContext, vm::VirtualMachine},
+};
 
 impl VirtualMachine {
     pub fn new(mut machine_config: MachineConfig) -> Self {
@@ -39,7 +51,9 @@ impl VirtualMachine {
         let irq_handler = Arc::new(Mutex::new(IRQHandler::new()));
         let guest_memory = Arc::new(Mutex::new(vec![]));
 
-        let mut cpuid = kvm.get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES).unwrap();
+        let mut cpuid = kvm
+            .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
+            .unwrap();
         for entry in cpuid.as_mut_slice() {
             match entry.function {
                 0x80000000 => {
@@ -86,7 +100,8 @@ impl VirtualMachine {
                         code_offset,
                     );
 
-                    this.memory_regions.lock()
+                    this.memory_regions
+                        .lock()
                         .unwrap()
                         .last()
                         .unwrap()
@@ -115,7 +130,7 @@ impl VirtualMachine {
             io_map_tick,
             mmio_map_tick,
             irq_handler_tick,
-            vm_tick
+            vm_tick,
         ));
 
         this
@@ -138,7 +153,11 @@ impl VirtualMachine {
         }
 
         let userspace_mem = raw_ptr as *mut u8;
-        self.memory_regions.lock().unwrap().push(MemoryRegion::new(userspace_mem, mem_size, mem_offset));
+        self.memory_regions.lock().unwrap().push(MemoryRegion::new(
+            userspace_mem,
+            mem_size,
+            mem_offset,
+        ));
 
         let memory_region = kvm_userspace_memory_region {
             slot: self.memory_regions.lock().unwrap().len() as u32 - 1,

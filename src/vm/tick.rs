@@ -1,10 +1,17 @@
-use std::{sync::{Arc, Mutex}, thread};
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
 
 use kvm_ioctls::VmFd;
 
-use crate::{device_maps::{io::IODeviceMap, mmio::MMIODeviceMap}, irq::handler::IRQHandler, vm::vm::VirtualMachine};
+use crate::{
+    device_maps::{io::IODeviceMap, mmio::MMIODeviceMap},
+    irq::handler::IRQHandler,
+    vm::vm::VirtualMachine,
+};
 
-pub struct TickContext{
+pub struct TickContext {
     io_map_tick: Arc<Mutex<IODeviceMap>>,
     mmio_map_tick: Arc<Mutex<MMIODeviceMap>>,
     irq_handler_tick: Arc<Mutex<IRQHandler>>,
@@ -12,11 +19,18 @@ pub struct TickContext{
 }
 
 impl TickContext {
-    pub fn new(io_map_tick: Arc<Mutex<IODeviceMap>>, 
-            mmio_map_tick: Arc<Mutex<MMIODeviceMap>>, 
-            irq_handler_tick: Arc<Mutex<IRQHandler>>, 
-            vm_tick: Arc<Mutex<VmFd>>) -> Self {
-        Self { io_map_tick, mmio_map_tick, irq_handler_tick, vm_tick }
+    pub fn new(
+        io_map_tick: Arc<Mutex<IODeviceMap>>,
+        mmio_map_tick: Arc<Mutex<MMIODeviceMap>>,
+        irq_handler_tick: Arc<Mutex<IRQHandler>>,
+        vm_tick: Arc<Mutex<VmFd>>,
+    ) -> Self {
+        Self {
+            io_map_tick,
+            mmio_map_tick,
+            irq_handler_tick,
+            vm_tick,
+        }
     }
 }
 
