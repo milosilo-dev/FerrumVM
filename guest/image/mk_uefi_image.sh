@@ -33,6 +33,7 @@ mkdir -p $MNT/EFI/BOOT
 
 # 7. Copy bootloader
 cp BOOTX64.EFI $MNT/EFI/BOOT/
+cp limine.conf $MNT/EFI/BOOT/
 
 sync
 umount $MNT
