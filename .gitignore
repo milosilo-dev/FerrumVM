@@ -10,4 +10,4 @@ guest/image/efi_test/BOOTX64.EFI
 guest/image/limine_test/BOOTX64.EFI
 acpi/*.hex
 acpi/*.aml
-ferrum.log
+/ferrum.log
