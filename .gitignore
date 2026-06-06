@@ -8,6 +8,7 @@ guest/image/disk.img
 guest/image/BOOTX64.EFI
 guest/image/efi_test/BOOTX64.EFI
 guest/image/limine_test/BOOTX64.EFI
+guest/image/initramfs/initramfs-linux.img
 acpi/*.hex
 acpi/*.aml
-/ferrum.log
+ferrum.log
