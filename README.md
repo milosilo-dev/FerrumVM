@@ -183,7 +183,7 @@ The `build.rs` script automatically assembles `entry.asm`, compiles the C firmwa
 - [x] ACPI table injection
 - [x] PCI configuration space
 - [x] Limine bootloader integration
-- [x] Linux kernel boot (early)
+- [x] Linux kernel boot
 - [ ] Robust disk image support
 - [ ] Interrupt-driven virtio
 - [ ] SMP support

@@ -1,9 +1,0 @@
-#!/bin/sh
-
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
-
-mount /dev/sda2 /newroot
-
-exec switch_root /newroot /sbin/init

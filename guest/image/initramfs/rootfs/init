@@ -1,0 +1,21 @@
+#!/bin/sh
+
+/bin/busybox mkdir -p /dev
+/bin/busybox mknod /dev/console c 5 1
+/bin/busybox mknod /dev/null c 1 3
+/bin/busybox mknod /dev/ttyS0 c 4 64
+
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+
+/bin/busybox ls -la /dev/console /dev/ttyS0 /dev/null 2>&1
+
+# Look for block devices from virtio-blk
+/bin/busybox ls -la /dev/vd* /dev/sd* /dev/xvd* 2>&1
+
+/bin/busybox dmesg | /bin/busybox tail -10
+
+echo "FerrumVM initramfs shell ready."
+echo "Type 'poweroff' to shutdown."
+
+exec /bin/busybox sh
