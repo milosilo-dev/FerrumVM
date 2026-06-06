@@ -342,12 +342,7 @@ static EFI_STATUS efi_GetVariable(
     UINTN    *DataSize,
     VOID     *Data
 ) {
-    serial2_puts("[EFI] GetVarible name='");
-    for (int i = 0; i < 10; i++) {
-        serial2_puts("0x");
-        serial2_putx(VariableName[i]);
-    }
-    serial2_puts("'\n");
+    serial2_puts("[EFI] GetVarible\n");
 }
 
 static EFI_STATUS EFIAPI stub_FreePool(void* a, void* b, void* c, void* d) {
