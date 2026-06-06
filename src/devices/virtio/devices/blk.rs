@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
+use crate::devices::virtio::{virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue}};
 
 const SECTOR_SIZE: u64 = 512;
 
@@ -31,7 +31,7 @@ struct VirtioBlkConfig {
 impl VirtioBlkConfig {
     pub fn new(capacity: u64, size_max: u32, seg_max: u32, blk_size: u32) -> Self {
         Self {
-            capacity,
+            capacity: capacity / blk_size as u64,
             size_max,
             seg_max,
             blk_size,
