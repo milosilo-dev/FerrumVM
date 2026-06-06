@@ -26,11 +26,23 @@ pub struct MachineConfig {
 impl MachineConfig {
     pub fn inject_memmap(&mut self) {
         let mem_map: Vec<MemMap> = vec![
-            // Conventional low RAM (IVT, BDA, free conventional)
+            // Real mode IVT + BDA - keep reserved
             MemMap {
                 start: 0x00000,
-                end: 0x9EFFF,
+                end: 0x004FF,
                 mem_type: MemType::Reserved as u32,
+            },
+            // Free conventional low memory - kernel needs this for trampoline
+            MemMap {
+                start: 0x00500,
+                end: 0x7FFFF,
+                mem_type: MemType::ConventionalMemory as u32,
+            },
+            // Conventional low RAM (IVT, BDA, free conventional)
+            MemMap {
+                start: 0x80000,
+                end: 0x9EFFF,
+                mem_type: MemType::ConventionalMemory as u32,
             },
             // EBDA
             MemMap {
