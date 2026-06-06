@@ -56,11 +56,17 @@ impl VirtualMachine {
                     println!("VM HALT via port 0x500");
                     return Err(CrashReason::Hlt);
                 }
-                let mut io_map = self.io_map.lock().unwrap();
+                let mut io_map = match self.io_map.lock() {
+                    Ok(map) => map,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 io_map.output(port, data);
             }
             VcpuExit::IoIn(port, data) => {
-                let mut io_map = self.io_map.lock().unwrap();
+                let mut io_map = match self.io_map.lock() {
+                    Ok(map) => map,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 let io_ret = io_map.input(port, data.len());
                 if io_ret.is_none() {
                     for b in data.iter_mut() {
@@ -77,11 +83,17 @@ impl VirtualMachine {
                 data.copy_from_slice(&io_ret);
             }
             VcpuExit::MmioWrite(addr, data) => {
-                let mut mmio_map = self.mmio_map.lock().unwrap();
+                let mut mmio_map = match self.mmio_map.lock() {
+                    Ok(map) => map,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 mmio_map.write(addr, data);
             }
             VcpuExit::MmioRead(addr, data) => {
-                let mut mmio_map = self.mmio_map.lock().unwrap();
+                let mut mmio_map = match self.mmio_map.lock() {
+                    Ok(map) => map,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 let io_ret = mmio_map.read(addr, data.len());
                 if io_ret.is_none() {
                     for b in data.iter_mut() {

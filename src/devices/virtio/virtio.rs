@@ -186,14 +186,27 @@ impl VirtioQueue {
     pub fn pop_avail(&mut self, mem: &VirtioGuestMemoryHandle) -> Option<u16> {
         let avail_idx = mem.read_u16(self.avail_addr + 2);
 
-        if self.last_avail_idx == avail_idx {
+        let entries_available = avail_idx.wrapping_sub(self.last_avail_idx);
+        if entries_available == 0 {
+            return None;
+        }
+
+        if entries_available > self.size {
+            // avail_idx wrapped around and indices are out of sync; resync
+            self.last_avail_idx = avail_idx;
             return None;
         }
 
         let ring_offset = 4 + (self.last_avail_idx % self.size) as u64 * 2;
         let head = mem.read_u16(self.avail_addr + ring_offset);
 
-        self.last_avail_idx += 1;
+        if head >= self.size {
+            // Invalid descriptor index from guest; resync
+            self.last_avail_idx = avail_idx;
+            return None;
+        }
+
+        self.last_avail_idx = self.last_avail_idx.wrapping_add(1);
         Some(head)
     }
 
