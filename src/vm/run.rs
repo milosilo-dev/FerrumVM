@@ -1,3 +1,4 @@
+use libc;
 use kvm_ioctls::VcpuExit;
 use std::io::Write;
 
@@ -12,6 +13,7 @@ pub enum CrashReason {
     NoMMIODataReturned,
     IncorrectMMIOReadLength,
     Shutdown,
+    RunError,
 }
 
 impl VirtualMachine {
@@ -38,7 +40,13 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
-        let exit = self.vcpu.fd.run().expect("run failed");
+        let exit = loop {
+            match self.vcpu.fd.run() {
+                Ok(exit) => break exit,
+                Err(e) if e.errno() == libc::EINTR => continue, // signal interrupted, retry
+                Err(_) => return Err(CrashReason::RunError),
+            }
+        };
 
         match exit {
             VcpuExit::Hlt => {

@@ -59,18 +59,66 @@ impl Serial {
                             std::process::exit(0);
                         }
                         Event::Key(KeyEvent {
-                            code: KeyCode::Char('w'),
+                            code,
                             kind: KeyEventKind::Press,
+                            modifiers,
                             ..
                         }) => {
-                            queue.lock().unwrap().push('\n' as u8);
-                        }
-                        Event::Key(KeyEvent {
-                            code: KeyCode::Char(c),
-                            kind: KeyEventKind::Press,
-                            ..
-                        }) => {
-                            queue.lock().unwrap().push(c as u8);
+                            let bytes: &[u8] = match code {
+                                // Control characters
+                                KeyCode::Char(c) if modifiers.contains(KeyModifiers::CONTROL) => {
+                                    let ctrl_byte = (c as u8) & 0x1F;
+                                    &[ctrl_byte] as &[u8] // won't work as a match arm directly, see below
+                                }
+
+                                // Printable characters (including Enter-as-\r for terminals)
+                                KeyCode::Char(c) => {
+                                    let mut q = queue.lock().unwrap();
+                                    // Handle multi-byte UTF-8
+                                    let mut buf = [0u8; 4];
+                                    let s = c.encode_utf8(&mut buf);
+                                    q.extend_from_slice(s.as_bytes());
+                                    continue;
+                                }
+
+                                KeyCode::Enter      => b"\r",
+                                KeyCode::Backspace  => b"\x7f",
+                                KeyCode::Delete     => b"\x1b[3~",
+                                KeyCode::Esc        => b"\x1b",
+                                KeyCode::Tab        => b"\t",
+                                KeyCode::BackTab    => b"\x1b[Z",
+
+                                // Arrow keys
+                                KeyCode::Up         => b"\x1b[A",
+                                KeyCode::Down       => b"\x1b[B",
+                                KeyCode::Right      => b"\x1b[C",
+                                KeyCode::Left       => b"\x1b[D",
+
+                                // Navigation
+                                KeyCode::Home       => b"\x1b[H",
+                                KeyCode::End        => b"\x1b[F",
+                                KeyCode::PageUp     => b"\x1b[5~",
+                                KeyCode::PageDown   => b"\x1b[6~",
+                                KeyCode::Insert     => b"\x1b[2~",
+
+                                // Function keys
+                                KeyCode::F(1)       => b"\x1bOP",
+                                KeyCode::F(2)       => b"\x1bOQ",
+                                KeyCode::F(3)       => b"\x1bOR",
+                                KeyCode::F(4)       => b"\x1bOS",
+                                KeyCode::F(5)       => b"\x1b[15~",
+                                KeyCode::F(6)       => b"\x1b[17~",
+                                KeyCode::F(7)       => b"\x1b[18~",
+                                KeyCode::F(8)       => b"\x1b[19~",
+                                KeyCode::F(9)       => b"\x1b[20~",
+                                KeyCode::F(10)      => b"\x1b[21~",
+                                KeyCode::F(11)      => b"\x1b[23~",
+                                KeyCode::F(12)      => b"\x1b[24~",
+
+                                _ => continue,
+                            };
+
+                            queue.lock().unwrap().extend_from_slice(bytes);
                         }
                         _ => {}
                     }
