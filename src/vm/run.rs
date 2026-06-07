@@ -1,5 +1,5 @@
-use libc;
 use kvm_ioctls::VcpuExit;
+use libc;
 use std::io::Write;
 
 use crate::vm::vm::VirtualMachine;

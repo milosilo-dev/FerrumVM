@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::devices::virtio::{virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue}};
+use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
 
 const SECTOR_SIZE: u64 = 512;
 

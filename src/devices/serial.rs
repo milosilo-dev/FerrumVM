@@ -35,6 +35,7 @@ pub struct Serial {
     scr: u8,
     dll: u8,
     dlh: u8,
+    thr_empty: bool,
 }
 
 impl Serial {
@@ -81,39 +82,39 @@ impl Serial {
                                     continue;
                                 }
 
-                                KeyCode::Enter      => b"\r",
-                                KeyCode::Backspace  => b"\x7f",
-                                KeyCode::Delete     => b"\x1b[3~",
-                                KeyCode::Esc        => b"\x1b",
-                                KeyCode::Tab        => b"\t",
-                                KeyCode::BackTab    => b"\x1b[Z",
+                                KeyCode::Enter => b"\r",
+                                KeyCode::Backspace => b"\x7f",
+                                KeyCode::Delete => b"\x1b[3~",
+                                KeyCode::Esc => b"\x1b",
+                                KeyCode::Tab => b"\t",
+                                KeyCode::BackTab => b"\x1b[Z",
 
                                 // Arrow keys
-                                KeyCode::Up         => b"\x1b[A",
-                                KeyCode::Down       => b"\x1b[B",
-                                KeyCode::Right      => b"\x1b[C",
-                                KeyCode::Left       => b"\x1b[D",
+                                KeyCode::Up => b"\x1b[A",
+                                KeyCode::Down => b"\x1b[B",
+                                KeyCode::Right => b"\x1b[C",
+                                KeyCode::Left => b"\x1b[D",
 
                                 // Navigation
-                                KeyCode::Home       => b"\x1b[H",
-                                KeyCode::End        => b"\x1b[F",
-                                KeyCode::PageUp     => b"\x1b[5~",
-                                KeyCode::PageDown   => b"\x1b[6~",
-                                KeyCode::Insert     => b"\x1b[2~",
+                                KeyCode::Home => b"\x1b[H",
+                                KeyCode::End => b"\x1b[F",
+                                KeyCode::PageUp => b"\x1b[5~",
+                                KeyCode::PageDown => b"\x1b[6~",
+                                KeyCode::Insert => b"\x1b[2~",
 
                                 // Function keys
-                                KeyCode::F(1)       => b"\x1bOP",
-                                KeyCode::F(2)       => b"\x1bOQ",
-                                KeyCode::F(3)       => b"\x1bOR",
-                                KeyCode::F(4)       => b"\x1bOS",
-                                KeyCode::F(5)       => b"\x1b[15~",
-                                KeyCode::F(6)       => b"\x1b[17~",
-                                KeyCode::F(7)       => b"\x1b[18~",
-                                KeyCode::F(8)       => b"\x1b[19~",
-                                KeyCode::F(9)       => b"\x1b[20~",
-                                KeyCode::F(10)      => b"\x1b[21~",
-                                KeyCode::F(11)      => b"\x1b[23~",
-                                KeyCode::F(12)      => b"\x1b[24~",
+                                KeyCode::F(1) => b"\x1bOP",
+                                KeyCode::F(2) => b"\x1bOQ",
+                                KeyCode::F(3) => b"\x1bOR",
+                                KeyCode::F(4) => b"\x1bOS",
+                                KeyCode::F(5) => b"\x1b[15~",
+                                KeyCode::F(6) => b"\x1b[17~",
+                                KeyCode::F(7) => b"\x1b[18~",
+                                KeyCode::F(8) => b"\x1b[19~",
+                                KeyCode::F(9) => b"\x1b[20~",
+                                KeyCode::F(10) => b"\x1b[21~",
+                                KeyCode::F(11) => b"\x1b[23~",
+                                KeyCode::F(12) => b"\x1b[24~",
 
                                 _ => continue,
                             };
@@ -141,6 +142,7 @@ impl Serial {
             scr: 0,
             dll: 0,
             dlh: 0,
+            thr_empty: true,
         }
     }
 
@@ -150,21 +152,31 @@ impl Serial {
     }
 
     fn update_iir(&mut self) {
+        let was_pending = (self.iir & 0x01) == 0;
+
         if self.fcr & 0x01 != 0 {
             self.iir |= 0xC0;
         } else {
             self.iir &= !0xC0;
         }
-        let pending = if self.ier & 0x01 != 0 && !self.data.is_empty() {
-            true
-        } else {
-            false
-        };
-        if pending {
+
+        let now_pending = if self.ier & 0x01 != 0 && !self.data.is_empty() {
             self.iir &= !0x01;
             self.iir = (self.iir & 0xF1) | (0x04 << 1);
+            true
+        } else if self.ier & 0x02 != 0 && self.thr_empty {
+            self.iir &= !0x01;
+            self.iir = (self.iir & 0xF1) | (0x02 << 1);
+            true
         } else {
             self.iir |= 0x01;
+            false
+        };
+
+        if now_pending && !was_pending {
+            self.trigger_irq();
+        } else if !now_pending && was_pending {
+            self.deassert_irq();
         }
     }
 
@@ -212,9 +224,7 @@ impl IODevice for Serial {
                         out[i] = next_byte.unwrap();
                     }
                 }
-                if self.data.is_empty() {
-                    self.deassert_irq();
-                }
+                self.update_iir();
                 out
             }
             1 => {
@@ -252,6 +262,8 @@ impl IODevice for Serial {
                 if let SerialMode::LogFile(file) = &mut self.mode {
                     let _ = file.write(data);
                 }
+                self.thr_empty = true;
+                self.update_iir();
             }
             1 => {
                 if dlab {
@@ -290,16 +302,11 @@ impl IODevice for Serial {
     }
 
     fn tick(&mut self) {
-        let mut has_data = false;
         {
             let mut queue = self.queue.lock().unwrap();
             while let Some(b) = queue.pop() {
                 self.data.push_back(b);
-                has_data = true;
             }
-        }
-        if has_data {
-            self.trigger_irq();
         }
         self.update_iir();
         self.update_lsr();
