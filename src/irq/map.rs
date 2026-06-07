@@ -26,6 +26,11 @@ impl IrqMap {
     }
 
     pub fn default_map() -> Vec<Self> {
-        vec![Self::new(0, 0, 0), Self::new(1, 1, 0)]
+        vec![
+            Self::new(0, 0, 0), // PIT timer
+            Self::new(1, 1, 0), // Keyboard
+            Self::new(3, 3, 0), // COM2 (serial)
+            Self::new(4, 4, 0), // COM1 (serial)
+        ]
     }
 }

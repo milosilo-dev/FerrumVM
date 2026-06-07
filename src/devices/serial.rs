@@ -98,13 +98,7 @@ impl Serial {
 
     pub fn set_data(&mut self, new_data: Vec<u8>) {
         self.data.extend(new_data.iter());
-        if self.irq_handler.is_some() {
-            let irq_handler = self.irq_handler.as_mut().unwrap();
-            irq_handler
-                .lock()
-                .unwrap()
-                .trigger_irq(IRQCommand::new(4, true));
-        }
+        self.trigger_irq();
     }
 
     fn update_iir(&mut self) {
@@ -134,6 +128,24 @@ impl Serial {
             self.lsr &= !0x01;
         }
     }
+
+    fn trigger_irq(&mut self) {
+        if let Some(handler) = &self.irq_handler {
+            handler
+                .lock()
+                .unwrap()
+                .trigger_irq(IRQCommand::new(4, true));
+        }
+    }
+
+    fn deassert_irq(&mut self) {
+        if let Some(handler) = &self.irq_handler {
+            handler
+                .lock()
+                .unwrap()
+                .trigger_irq(IRQCommand::new(4, false));
+        }
+    }
 }
 
 impl IODevice for Serial {
@@ -151,6 +163,9 @@ impl IODevice for Serial {
                     if next_byte.is_some() {
                         out[i] = next_byte.unwrap();
                     }
+                }
+                if self.data.is_empty() {
+                    self.deassert_irq();
                 }
                 out
             }
@@ -227,11 +242,16 @@ impl IODevice for Serial {
     }
 
     fn tick(&mut self) {
+        let mut has_data = false;
         {
             let mut queue = self.queue.lock().unwrap();
             while let Some(b) = queue.pop() {
                 self.data.push_back(b);
+                has_data = true;
             }
+        }
+        if has_data {
+            self.trigger_irq();
         }
         self.update_iir();
         self.update_lsr();
