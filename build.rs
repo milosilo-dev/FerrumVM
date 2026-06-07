@@ -16,7 +16,6 @@ const OBJCOPY: &str = "objcopy";
 const FIRMWARE_DIR: &str = "guest/firmware";
 const BUILD_DIR: &str = "guest/firmware/build";
 const ACPI_DIR: &str = "acpi";
-const DISK_FILE: &str = "guest/disk.bin";
 
 fn run(cmd: &str, args: &[&str], error: &str) {
     let status = Command::new(cmd)
@@ -170,23 +169,6 @@ fn build_firmware() {
     objcopy_binary(&firmware_elf, &firmware_bin);
 }
 
-fn ensure_disk_file() {
-    if Path::new(DISK_FILE).exists() {
-        return;
-    }
-
-    run(
-        "dd",
-        &[
-            "if=/dev/random",
-            &format!("of={DISK_FILE}"),
-            "bs=1M",
-            "count=64",
-        ],
-        "failed to create disk image",
-    );
-}
-
 fn build_tests() {
     for entry in WalkDir::new("guest/test")
         .into_iter()
@@ -226,6 +208,5 @@ fn compile_test(path: &Path) {
 
 fn main() {
     build_firmware();
-    ensure_disk_file();
     build_tests();
 }
