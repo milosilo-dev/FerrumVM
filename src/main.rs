@@ -22,7 +22,7 @@ use ferrumvm::{
 
 fn main() {
     print!("\n\r");
-    let log_file = File::create("ferrum.log").unwrap();
+    let log_file = File::create("ferrum-firmware.log").unwrap();
 
     let com1 = Box::new(Serial::new(SerialMode::Terminal));
     let com2 = Box::new(Serial::new(SerialMode::LogFile(log_file)));
