@@ -42,45 +42,44 @@ impl Serial {
         let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
 
         if let SerialMode::Terminal = mode {
-            if enable_raw_mode().is_ok() {
-                std::thread::spawn({
-                    let queue = queue.clone();
+            enable_raw_mode().unwrap();
+            std::thread::spawn({
+                let queue = queue.clone();
 
-                    move || loop {
-                        match event::read().unwrap() {
-                            Event::Key(KeyEvent {
-                                code: KeyCode::Char('z'),
-                                kind: KeyEventKind::Press,
-                                modifiers: KeyModifiers::CONTROL,
-                                ..
-                            }) => {
-                                let _ = disable_raw_mode();
-                                println!("");
-                                std::process::exit(0);
-                            }
-                            Event::Key(KeyEvent {
-                                code: KeyCode::Char('w'),
-                                kind: KeyEventKind::Press,
-                                ..
-                            }) => {
-                                queue.lock().unwrap().push('\n' as u8);
-                            }
-                            Event::Key(KeyEvent {
-                                code: KeyCode::Char(c),
-                                kind: KeyEventKind::Press,
-                                ..
-                            }) => {
-                                queue.lock().unwrap().push(c as u8);
-                            }
-                            _ => {}
+                move || loop {
+                    match event::read().unwrap() {
+                        Event::Key(KeyEvent {
+                            code: KeyCode::Char('z'),
+                            kind: KeyEventKind::Press,
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        }) => {
+                            disable_raw_mode().unwrap();
+                            println!("");
+                            std::process::exit(0);
                         }
+                        Event::Key(KeyEvent {
+                            code: KeyCode::Char('w'),
+                            kind: KeyEventKind::Press,
+                            ..
+                        }) => {
+                            queue.lock().unwrap().push('\n' as u8);
+                        }
+                        Event::Key(KeyEvent {
+                            code: KeyCode::Char(c),
+                            kind: KeyEventKind::Press,
+                            ..
+                        }) => {
+                            queue.lock().unwrap().push(c as u8);
+                        }
+                        _ => {}
                     }
-                });
-            }
+                }
+            });
         }
 
         Self {
-            data: vec![b'\n'].into(),
+            data: vec![].into(),
             irq_handler: None,
             queue,
             mode,
@@ -99,7 +98,8 @@ impl Serial {
 
     pub fn set_data(&mut self, new_data: Vec<u8>) {
         self.data.extend(new_data.iter());
-        if let Some(irq_handler) = &mut self.irq_handler {
+        if self.irq_handler.is_some() {
+            let irq_handler = self.irq_handler.as_mut().unwrap();
             irq_handler
                 .lock()
                 .unwrap()
@@ -144,14 +144,14 @@ impl IODevice for Serial {
                 if dlab {
                     return vec![self.dll; length];
                 }
+
                 let mut out = vec![0; length];
                 for i in 0..length {
-                    if let Some(byte) = self.data.pop_front() {
-                        out[i] = byte;
+                    let next_byte = self.data.pop_front();
+                    if next_byte.is_some() {
+                        out[i] = next_byte.unwrap();
                     }
                 }
-                self.update_iir();
-                self.update_lsr();
                 out
             }
             1 => {
