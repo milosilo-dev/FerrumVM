@@ -467,6 +467,11 @@ static EFI_STATUS EFIAPI efi_CreateEventEx(
     return EFI_SUCCESS;
 }
 
+static EFI_STATUS EFIAPI efi_SetTimer(EFI_EVENT Event, EFI_TIMER_DELAY Type, UINT64 TriggerTime) {
+    Event->signaled = true;
+    return EFI_SUCCESS;
+}
+
 STUB(SetTimer,                      EFI_SUCCESS)
 STUB(SignalEvent,                   EFI_SUCCESS)
 STUB(CloseEvent,                    EFI_SUCCESS)
@@ -667,7 +672,7 @@ static EFI_BOOT_SERVICES gBootServices = {
     .AllocatePool                       = (void*)efi_AllocatePool,
     .FreePool                           = (void*)stub_FreePool,
     .CreateEvent                        = (void*)efi_CreateEvent,
-    .SetTimer                           = (void*)stub_SetTimer,
+    .SetTimer                           = (void*)efi_SetTimer,
     .WaitForEvent                       = (void*)efi_WaitForEvent,
     .SignalEvent                        = (void*)stub_SignalEvent,
     .CloseEvent                         = (void*)stub_CloseEvent,

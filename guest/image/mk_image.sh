@@ -28,6 +28,9 @@ udevadm settle || true
 mkfs.fat -F32 ${LOOP}p1
 mkfs.ext4 ${LOOP}p2
 
+# Write the uuid into limine.conf automaticly
+UUID=$(blkid -s UUID -o value ${LOOP}p2)
+
 # 5. Mount it
 mkdir -p $MNT
 mount ${LOOP}p1 $MNT
@@ -40,6 +43,7 @@ cp BOOTX64.EFI $MNT/EFI/BOOT/
 cp limine.conf $MNT/EFI/BOOT/
 cp vmlinuz-linux $MNT
 cp initramfs/initramfs-linux.img $MNT
+sed -i "s|root=.*|root=UUID=$UUID|" $MNT/EFI/BOOT/limine.conf
 
 sync
 umount $MNT
@@ -53,5 +57,7 @@ sync
 umount $MNT
 
 losetup -d $LOOP
+
+chmod a+rw $IMG
 
 echo "Done: UEFI bootable image created"
