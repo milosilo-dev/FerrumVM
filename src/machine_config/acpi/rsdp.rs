@@ -10,8 +10,10 @@ pub fn build_rsdp(xsdt_addr: u64) -> Binary {
     rsdp[20..24].copy_from_slice(&36u32.to_le_bytes());
     rsdp[24..32].copy_from_slice(&xsdt_addr.to_le_bytes());
 
-    rsdp[8] = checksum(&rsdp[0..20]);
-    rsdp[32] = checksum(&rsdp[0..36]);
+    rsdp[8] = 0;
+    rsdp[8] = (0u8).wrapping_sub(checksum(&rsdp[0..20]));
+    rsdp[32] = 0;
+    rsdp[32] = (0u8).wrapping_sub(checksum(&rsdp[0..36]));
 
     Binary::new(rsdp, 0xE0000)
 }

@@ -80,7 +80,7 @@ impl BlkVirtio {
 
 impl VirtioDevice for BlkVirtio {
     fn virtio_type(&self) -> u32 {
-        0x04
+        0x02
     }
 
     fn features(&self) -> u32 {
@@ -92,73 +92,47 @@ impl VirtioDevice for BlkVirtio {
     }
 
     fn tick(&mut self, queue: &mut VirtioQueue) -> bool {
-        if self.guest_memory.is_none() {
+        let Some(guest_memory) = self.guest_memory.as_mut() else {
             return false;
-        }
+        };
 
-        let mut guest_memory = self.guest_memory.as_mut().unwrap();
         let mut did_work = false;
+        let mut count = 0;
 
-        while let Some(head) = queue.pop_avail(&guest_memory) {
-            let header = queue.get_descriptor(&guest_memory, head);
+        while let Some(head) = queue.pop_avail(guest_memory) {
+            count += 1;
+            let header = queue.get_descriptor(guest_memory, head);
 
-            if header.flags & 1 == 0 {
-                // Next
-                eprintln!(
-                    "virtio-blk: head={}, addr=0x{:x}, len={}, flags=0x{:x}, next={}",
-                    head, header.addr, header.len, header.flags, header.next
-                );
-                eprintln!(
-                    "virtio-blk: desc_addr=0x{:x}, avail_addr=0x{:x}, used_addr=0x{:x}",
-                    queue.desc_addr, queue.avail_addr, queue.used_addr
-                );
-                eprintln!(
-                    "virtio-blk: last_avail_idx={}, queue.size={}, queue.ready={}",
-                    queue.last_avail_idx, queue.size, queue.ready
-                );
-                let avail_idx = guest_memory.read_u16(queue.avail_addr + 2);
-                eprintln!("virtio-blk: avail_idx={}", avail_idx);
-                for i in 0..16 {
-                    let off = 4 + i * 2;
-                    let v = guest_memory.read_u16(queue.avail_addr + off);
-                    eprintln!("virtio-blk:   ring[{}] = {}", i, v);
-                }
-                // Dump descriptor table first 8 entries
-                for i in 0..8 {
-                    let d = queue.get_descriptor(&guest_memory, i);
-                    eprintln!(
-                        "virtio-blk:   desc[{}] addr=0x{:x} len={} flags={} next={}",
-                        i, d.addr, d.len, d.flags, d.next
-                    );
-                }
-                panic!("virtio-blk got inncorect header");
+            if header.flags & 1 == 0 || header.len != 16 {
+                eprintln!("blk: SKIP hdr flags={:#06x} len={}", header.flags, header.len);
+                queue.push_used(guest_memory, head, 0);
+                continue;
             }
 
-            if header.len != 16 {
-                panic!("virtio-blk got the wrong header length");
-            }
+            let request = BlkRequest::new(header.addr, guest_memory);
 
-            let request = BlkRequest::new(header.addr, &guest_memory);
-
-            let data_section = queue.get_descriptor(&guest_memory, header.next);
+            let data_section = queue.get_descriptor(guest_memory, header.next);
 
             if data_section.flags & 1 == 0 || data_section.flags & 2 == 0 {
-                // Next & Write
-                panic!("virtio-blk got inncorect data buffer");
+                eprintln!("blk: SKIP data flags={:#06x} len={}", data_section.flags, data_section.len);
+                queue.push_used(guest_memory, head, 0);
+                continue;
             }
 
-            let status_byte = queue.get_descriptor(&guest_memory, data_section.next);
+            let status_byte = queue.get_descriptor(guest_memory, data_section.next);
 
             if status_byte.flags & 2 == 0 {
-                panic!("virtio-blk got inncorect status_byte");
+                eprintln!("blk: SKIP status flags={:#06x}", status_byte.flags);
+                queue.push_used(guest_memory, head, 0);
+                continue;
             }
 
             match request.rqst_type {
                 false => {
-                    // Device read
-                    self.blk_file
-                        .seek(SeekFrom::Start(request.sector * SECTOR_SIZE))
-                        .unwrap();
+                    if self.blk_file.seek(SeekFrom::Start(request.sector * SECTOR_SIZE)).is_err() {
+                        queue.push_used(guest_memory, head, 0);
+                        continue;
+                    }
                     let mut buf = vec![0u8; data_section.len as usize];
 
                     match self.blk_file.read_exact(&mut buf) {
@@ -166,30 +140,39 @@ impl VirtioDevice for BlkVirtio {
                             guest_memory.write_guest_memory(data_section.addr, &buf);
                             guest_memory.write_u8(status_byte.addr, 0x00);
                         }
-                        Err(err) => {
-                            println!("{}", err);
-                            guest_memory.write_u8(status_byte.addr, 0x01)
+                        Err(e) => {
+                            guest_memory.write_u8(status_byte.addr, 0x01);
                         }
                     }
                 }
                 true => {
-                    // Device write
                     let mut buf = vec![0u8; data_section.len as usize];
                     guest_memory.read_guest_memory(data_section.addr, &mut buf);
-                    self.blk_file
-                        .seek(SeekFrom::Start(request.sector * 512))
-                        .unwrap();
+                    if self.blk_file.seek(SeekFrom::Start(request.sector * 512)).is_err() {
+                        queue.push_used(guest_memory, head, 0);
+                        continue;
+                    }
 
                     match self.blk_file.write_all(&buf) {
-                        Ok(_) => guest_memory.write_u8(status_byte.addr, 0x00),
-                        Err(_) => guest_memory.write_u8(status_byte.addr, 0x01),
+                        Ok(_) => {
+                            eprintln!("blk: WRITE sector={} len={} ok", request.sector, data_section.len);
+                            guest_memory.write_u8(status_byte.addr, 0x00);
+                        }
+                        Err(e) => {
+                            eprintln!("blk: WRITE sector={} err={}", request.sector, e);
+                            guest_memory.write_u8(status_byte.addr, 0x01);
+                        }
                     }
                 }
             }
 
-            queue.push_used(&mut guest_memory, head, data_section.len);
+            queue.push_used(guest_memory, head, data_section.len);
 
             did_work = true;
+        }
+
+        if count > 10 {
+            eprintln!("blk: batch {} requests", count);
         }
 
         did_work

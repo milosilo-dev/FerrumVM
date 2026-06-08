@@ -43,7 +43,7 @@ cp BOOTX64.EFI $MNT/EFI/BOOT/
 cp limine.conf $MNT/EFI/BOOT/
 cp vmlinuz-linux $MNT
 cp initramfs/initramfs-linux.img $MNT
-sed -i "s|root=.*|root=UUID=$UUID|" $MNT/EFI/BOOT/limine.conf
+sed -i "s|root=UUID=[^ ]*|root=UUID=$UUID|" $MNT/EFI/BOOT/limine.conf
 
 sync
 umount $MNT

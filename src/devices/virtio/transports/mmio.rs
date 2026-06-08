@@ -27,8 +27,13 @@ pub struct MMIOTransport {
     status: u32,
     interrupt_status: u32,
 
+    device_features_sel: u32,
+    driver_features_sel: u32,
+
     irq_line: Option<Arc<Mutex<IRQHandler>>>,
 }
+
+const VIRTIO_F_VERSION_1: u64 = 1 << 32;
 
 impl MMIOTransport {
     pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize) -> Self {
@@ -38,6 +43,8 @@ impl MMIOTransport {
             queue_sel: 0,
             status: 0,
             interrupt_status: 0,
+            device_features_sel: 0,
+            driver_features_sel: 0,
             irq_line: None,
         }
     }
@@ -57,7 +64,14 @@ impl MMIODevice for MMIOTransport {
             0x004 => VERSION,
             0x008 => self.device.virtio_type(),
             0x00C => VENDOR_ID,
-            0x010 => self.device.features(),
+            0x010 => {
+                let features = self.device.features() as u64 | VIRTIO_F_VERSION_1;
+                if self.device_features_sel == 0 {
+                    features as u32
+                } else {
+                    (features >> 32) as u32
+                }
+            }
             0x034 => QUEUE_NUM_MAX,
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
@@ -71,6 +85,9 @@ impl MMIODevice for MMIOTransport {
 
     fn write(&mut self, addr: u64, data: &[u8]) {
         match addr {
+            0x014 => self.device_features_sel = read_u32_from_data(data),
+            0x020 => {} // DriverFeatures written but not validated
+            0x024 => self.driver_features_sel = read_u32_from_data(data),
             0x028 => {}
             0x030 => self.queue_sel = data[data.len() - 1] as usize,
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
@@ -82,6 +99,15 @@ impl MMIODevice for MMIOTransport {
                 }
             }
             0x060 => {}
+            0x064 => {
+                let ack = read_u32_from_data(data);
+                self.interrupt_status &= !ack;
+                if self.interrupt_status == 0 {
+                    if let Some(ref irq_line) = self.irq_line {
+                        irq_line.lock().unwrap().trigger_irq(IRQCommand::new(IRQ_LINE, false));
+                    }
+                }
+            }
             0x070 => {
                 let val = read_u32_from_data(data);
                 if val == 0 {
@@ -132,17 +158,20 @@ impl MMIODevice for MMIOTransport {
     }
 
     fn tick(&mut self) {
+        if self.status & 4 == 0 {
+            return;
+        }
         for queue in &mut self.queues {
             if queue.ready {
                 let completions = self.device.as_mut().tick(queue);
-                if completions && self.irq_line.is_some() {
-                    self.irq_line
-                        .as_mut()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .trigger_irq(IRQCommand::new(IRQ_LINE, true));
+                if completions {
+                    self.interrupt_status |= 1;
                 }
+            }
+        }
+        if self.interrupt_status != 0 {
+            if let Some(ref irq_line) = self.irq_line {
+                irq_line.lock().unwrap().trigger_irq(IRQCommand::new(IRQ_LINE, true));
             }
         }
     }

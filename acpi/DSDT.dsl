@@ -1,63 +1,73 @@
-DefinitionBlock (
-    "DSDT.aml",
-    "DSDT",
-    2,
-    "FERRUM",
-    "VM_DSDT",
-    0x00001000
-)
+/*
+ * Intel ACPI Component Architecture
+ * AML/ASL+ Disassembler version 20251212 (64-bit version)
+ * Copyright (c) 2000 - 2025 Intel Corporation
+ * 
+ * Disassembling to symbolic ASL+ operators
+ *
+ * Disassembly of /home/miles/Data/FerrumVM/acpi/DSDT.aml
+ *
+ * Original Table Header:
+ *     Signature        "DSDT"
+ *     Length           0x000000CD (205)
+ *     Revision         0x02
+ *     Checksum         0x75
+ *     OEM ID           "FERRUM"
+ *     OEM Table ID     "VM_DSDT"
+ *     OEM Revision     0x00001000 (4096)
+ *     Compiler ID      "INTL"
+ *     Compiler Version 0x20251212 (539300370)
+ */
+DefinitionBlock ("", "DSDT", 2, "FERRUM", "VM_DSDT", 0x00001000)
 {
-    Scope (\_SB)
+    Scope (_SB)
     {
-        // 1. Define the MMIO Region Container
-        // This acts as the bus for our VirtIO devices
         Device (VIRT)
         {
-            // Valid EISA ID: 3 letters + 4 hex digits
-            Name (_HID, EisaId ("VIR0001")) 
-            Name (_CID, EisaId ("PNP0A06"))
-            Name (_UID, 0)
-
-            // Define the Memory Range for VirtIO MMIO
-            // Update to match your VMM
-            Method (_CRS, 0, NotSerialized)
+            Name (_HID, "VIRT0001")  // _HID: Hardware ID
+            Name (_CID, "PNP0A06" /* Generic Container Device */)  // _CID: Compatible ID
+            Name (_UID, Zero)  // _UID: Unique ID
+            Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings
             {
                 Return (ResourceTemplate ()
                 {
-                    // Memory32Fixed: ReadWrite, Base, Length
-                    Memory32Fixed (ReadWrite, 0x20000000, 0x10000)
+                    Memory32Fixed (ReadWrite,
+                        0x20000000,         // Address Base
+                        0x00010000,         // Address Length
+                        )
                 })
             }
 
-            // 2. Define VirtIO Devices
-            // Each device needs a unique _UID and an _ADR (offset)
-            
-            // VirtIO RNG
             Device (RNG0)
             {
-                Name (_UID, 1)
-                Name (_ADR, 0x00000000) // Offset 0x0
-                
-                Method (_STA, 0, NotSerialized) { Return (0x0F) }
+                Name (_UID, One)  // _UID: Unique ID
+                Name (_ADR, Zero)  // _ADR: Address
+                Method (_STA, 0, NotSerialized)  // _STA: Status
+                {
+                    Return (0x0F)
+                }
             }
 
-            // VirtIO Counter
             Device (CNT0)
             {
-                Name (_UID, 2)
-                Name (_ADR, 0x00001000) // Offset 0x1000
-                
-                Method (_STA, 0, NotSerialized) { Return (0x0F) }
+                Name (_UID, 0x02)  // _UID: Unique ID
+                Name (_ADR, 0x1000)  // _ADR: Address
+                Method (_STA, 0, NotSerialized)  // _STA: Status
+                {
+                    Return (0x0F)
+                }
             }
 
-            // VirtIO Block (Disk)
             Device (DISK)
             {
-                Name (_UID, 3)
-                Name (_ADR, 0x00002000) // Offset 0x2000
-                
-                Method (_STA, 0, NotSerialized) { Return (0x0F) }
+                Name (_UID, 0x03)  // _UID: Unique ID
+                Name (_ADR, 0x2000)  // _ADR: Address
+                Method (_STA, 0, NotSerialized)  // _STA: Status
+                {
+                    Return (0x0F)
+                }
             }
         }
     }
 }
+
