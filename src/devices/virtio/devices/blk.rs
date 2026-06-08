@@ -140,7 +140,7 @@ impl VirtioDevice for BlkVirtio {
                             guest_memory.write_guest_memory(data_section.addr, &buf);
                             guest_memory.write_u8(status_byte.addr, 0x00);
                         }
-                        Err(e) => {
+                        Err(_) => {
                             guest_memory.write_u8(status_byte.addr, 0x01);
                         }
                     }
@@ -155,7 +155,6 @@ impl VirtioDevice for BlkVirtio {
 
                     match self.blk_file.write_all(&buf) {
                         Ok(_) => {
-                            eprintln!("blk: WRITE sector={} len={} ok", request.sector, data_section.len);
                             guest_memory.write_u8(status_byte.addr, 0x00);
                         }
                         Err(e) => {
