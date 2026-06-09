@@ -4,45 +4,11 @@ mount -t proc proc /proc 2>/dev/null
 mount -t sysfs sysfs /sys 2>/dev/null
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
 
-echo "=== /dev/vda ==="
-ls -la /dev/vda 2>/dev/null || echo "(no vda node)"
-echo ""
+mount /dev/vda2 /newroot
+mount -t proc proc /newroot/proc
+mount -t sysfs sysfs /newroot/sys
+mount -t devtmpfs devtmpfs /newroot/dev
 
-echo "=== /sys/block ==="
-ls /sys/block 2>/dev/null || echo "(empty)"
-echo ""
+exec switch_root /newroot /bin/sh
 
-echo "=== BLOCK DEVICES ==="
-for d in /dev/vd* /dev/sd* /dev/xvd*; do
-    [ -e "$d" ] && echo "Found: $d"
-done
-
-echo ""
-echo "=== TRYING TO READ VDA ==="
-dd if=/dev/vda bs=512 count=1 2>&1 | head -c 200
-echo ""
-
-echo ""
-echo "Scanning for rootfs..."
-mkdir -p /newroot
-
-# Try all block devices
-for dev in /dev/vda /dev/vda1 /dev/vda2 /dev/sda /dev/sda1 /dev/sda2; do
-    [ -b "$dev" ] || continue
-    echo "Trying $dev..."
-        echo "BEFORE_MOUNT_$(date +%s)"
-    timeout -t 5 mount -t ext4 "$dev" /newroot 2>&1
-        RET=$?
-        echo "AFTER_MOUNT_$(date +%s)_EXIT=$RET"
-        [ $RET -eq 0 ] || continue
-    echo "Mounted $dev, looking for init..."
-    ls /newroot 2>/dev/null
-    if [ -x /newroot/sbin/init ]; then
-        echo "Found rootfs on $dev"
-        exec /sbin/switch_root /newroot /sbin/init
-    fi
-    umount /newroot 2>/dev/null
-done
-
-echo "FAILED: No root filesystem found."
 exec /bin/sh
