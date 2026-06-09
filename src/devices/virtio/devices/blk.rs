@@ -110,10 +110,17 @@ impl VirtioDevice for BlkVirtio {
             }
 
             let request = BlkRequest::new(header.addr, guest_memory);
-
             let data_section = queue.get_descriptor(guest_memory, header.next);
 
-            if data_section.flags & 1 == 0 || data_section.flags & 2 == 0 {
+            let flags_ok = if request.rqst_type {
+                // write request: data is device-readable
+                data_section.flags & 2 == 0
+            } else {
+                // read request: data is device-writable
+                data_section.flags & 2 != 0
+            };
+
+            if !flags_ok {
                 eprintln!("blk: SKIP data flags={:#06x} len={}", data_section.flags, data_section.len);
                 queue.push_used(guest_memory, head, 0);
                 continue;
