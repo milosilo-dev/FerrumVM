@@ -104,7 +104,10 @@ impl MMIODevice for MMIOTransport {
                 self.interrupt_status &= !ack;
                 if self.interrupt_status == 0 {
                     if let Some(ref irq_line) = self.irq_line {
-                        irq_line.lock().unwrap().trigger_irq(IRQCommand::new(IRQ_LINE, false));
+                        irq_line
+                            .lock()
+                            .unwrap()
+                            .trigger_irq(IRQCommand::new(IRQ_LINE, false));
                     }
                 }
             }
@@ -171,7 +174,10 @@ impl MMIODevice for MMIOTransport {
         }
         if self.interrupt_status != 0 {
             if let Some(ref irq_line) = self.irq_line {
-                irq_line.lock().unwrap().trigger_irq(IRQCommand::new(IRQ_LINE, true));
+                irq_line
+                    .lock()
+                    .unwrap()
+                    .trigger_irq(IRQCommand::new(IRQ_LINE, true));
             }
         }
     }

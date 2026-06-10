@@ -108,7 +108,10 @@ impl VirtioDevice for BlkVirtio {
             let header = queue.get_descriptor(guest_memory, head);
 
             if header.flags & 1 == 0 || header.len != 16 {
-                eprintln!("blk: SKIP hdr flags={:#06x} len={}", header.flags, header.len);
+                eprintln!(
+                    "blk: SKIP hdr flags={:#06x} len={}",
+                    header.flags, header.len
+                );
                 queue.push_used(guest_memory, head, 0);
                 continue;
             }
@@ -125,7 +128,10 @@ impl VirtioDevice for BlkVirtio {
             };
 
             if !flags_ok {
-                eprintln!("blk: SKIP data flags={:#06x} len={}", data_section.flags, data_section.len);
+                eprintln!(
+                    "blk: SKIP data flags={:#06x} len={}",
+                    data_section.flags, data_section.len
+                );
                 queue.push_used(guest_memory, head, 0);
                 continue;
             }
@@ -140,7 +146,11 @@ impl VirtioDevice for BlkVirtio {
 
             match request.rqst_type {
                 false => {
-                    if self.blk_file.seek(SeekFrom::Start(request.sector * SECTOR_SIZE)).is_err() {
+                    if self
+                        .blk_file
+                        .seek(SeekFrom::Start(request.sector * SECTOR_SIZE))
+                        .is_err()
+                    {
                         queue.push_used(guest_memory, head, 0);
                         continue;
                     }
@@ -159,7 +169,11 @@ impl VirtioDevice for BlkVirtio {
                 true => {
                     let mut buf = vec![0u8; data_section.len as usize];
                     guest_memory.read_guest_memory(data_section.addr, &mut buf);
-                    if self.blk_file.seek(SeekFrom::Start(request.sector * 512)).is_err() {
+                    if self
+                        .blk_file
+                        .seek(SeekFrom::Start(request.sector * 512))
+                        .is_err()
+                    {
                         queue.push_used(guest_memory, head, 0);
                         continue;
                     }
