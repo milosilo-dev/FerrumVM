@@ -8,7 +8,7 @@ use ferrumvm::{
         serial::{Serial, SerialMode},
         timer::Pit,
         virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio},
+            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
             transports::mmio::MMIOTransport,
         },
     },
@@ -29,11 +29,18 @@ fn main() {
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
     let pci = Box::new(PCI::new());
-    let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
-    let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1));
+
+    let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1, 5));
+    let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1, 5));
     let blk = Box::new(MMIOTransport::new(
         Box::new(BlkVirtio::new("guest/image/disk.img")),
         1,
+        5,
+    ));
+    let net = Box::new(MMIOTransport::new(
+        Box::new(NetVirtio::new()),
+        2,
+        6,
     ));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
@@ -59,6 +66,7 @@ fn main() {
             MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
             MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
             MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
+            MMIODeviceRegion::new(0x20003000..=0x20003FFF, net),
             MMIODeviceRegion::new(0xE0000000..=0xE1000000, pci),
         ],
         irq_map: IrqMap::default_map(),

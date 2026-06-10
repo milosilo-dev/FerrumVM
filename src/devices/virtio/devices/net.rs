@@ -1,4 +1,7 @@
 use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 
 struct VirtioNetConfig {
     mac: [u8; 6],
@@ -83,7 +86,7 @@ impl PacketDesc {
         }
     }
 
-    fn from_guest_mem(base_ptr: u64, guest_memory: &VirtioGuestMemoryHandle) -> Self {
+    fn _from_guest_mem(base_ptr: u64, guest_memory: &VirtioGuestMemoryHandle) -> Self {
         Self {
             flags: guest_memory.read_byte(base_ptr),
             segmentation_offload: guest_memory.read_byte(base_ptr + 1),
@@ -110,13 +113,22 @@ impl PacketDesc {
 pub struct NetVirtio {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     config: VirtioNetConfig,
+    tap: File,
 }
 
 impl NetVirtio {
     pub fn new() -> Self {
+        let fd = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open("/dev/net/tun")
+            .expect("Failed to open /dev/net/tun");
+
         Self {
             guest_memory: None,
-            config: VirtioNetConfig::new([0, 0, 0, 0, 0, 0], 0, 0, 0, 0, 0, 0, 0, 0),
+            config: VirtioNetConfig::new([0x52, 0x54, 0x00, 0x12, 0x34, 0x56], 0, 0, 0, 0, 0, 0, 0, 0),
+            tap: fd,
         }
     }
 
@@ -137,13 +149,24 @@ impl NetVirtio {
             };
 
             // Use these to create the packet
-            let header = PacketDesc::new(0, 0, 0, 0, 0, 0, 0);
-            let ethernet_frame: [u8; 10] = [0; 10];
+            let header = PacketDesc::new(0, 0, 0, 0, 1, 0, 0);
 
-            guest_memory.write_guest_memory(packet_desc.addr, header.to_bytes().as_slice());
-            guest_memory.write_guest_memory(packet_desc.addr + 12, &ethernet_frame);
+            let mut frame = vec![0u8; packet_desc.len as usize - 12];
+            let n = match self.tap.read(&mut frame) {
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No frame ready — put the descriptor back or just skip
+                    queue.push_used(guest_memory, head, 0);
+                    continue;
+                }
+                Err(_) => return false,
+            };
+            frame.truncate(n);
 
-            queue.push_used(guest_memory, head, 12 + ethernet_frame.len() as u32);
+            guest_memory.write_guest_memory(packet_desc.addr, &header.to_bytes());
+            guest_memory.write_guest_memory(packet_desc.addr + 12, &frame);
+
+            queue.push_used(guest_memory, head, 12 + frame.len() as u32);
         }
         true
     }
@@ -156,7 +179,6 @@ impl NetVirtio {
 
         while let Some(head) = queue.pop_avail(guest_memory) {
             let desc = queue.get_descriptor(&guest_memory, head);
-            let header = PacketDesc::from_guest_mem(desc.addr, guest_memory);
 
             let packet_desc = if desc.flags & 1 != 0 {
                 // Has seperate descriptor for packet data
@@ -165,10 +187,12 @@ impl NetVirtio {
                 desc
             };
 
-            let mut packet = vec![0u8; packet_desc.len as usize];
+            let frame_len = packet_desc.len as usize - 12;
+            let mut packet = vec![0u8; frame_len];
             guest_memory.read_guest_memory(packet_desc.addr, &mut packet);
 
             // Use packet data
+            let _ = self.tap.write_all(&packet);
 
             queue.push_used(guest_memory, head, packet_desc.len);
         }
@@ -182,7 +206,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u32 {
-        0
+        1 << 5
     }
 
     fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
@@ -199,5 +223,10 @@ impl VirtioDevice for NetVirtio {
 
     fn read_config(&self, length: usize) -> Vec<u8> {
         self.config.to_bytes(length)
+    }
+
+    fn update(&mut self, queues: &mut[VirtioQueue]) -> bool {
+        let queue = &mut queues[0]; // RX queue stored inside the device
+        self.tick_rx_queue(queue)
     }
 }

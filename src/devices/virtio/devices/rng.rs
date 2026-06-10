@@ -58,4 +58,6 @@ impl VirtioDevice for RngVirtio {
     fn read_config(&self, _length: usize) -> Vec<u8> {
         vec![]
     }
+
+    fn update(&mut self, _queues: &mut[VirtioQueue]) -> bool {false}
 }

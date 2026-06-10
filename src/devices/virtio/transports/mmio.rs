@@ -10,7 +10,6 @@ use crate::{
 const MAGIC_NUMBER: u32 = 0x74726976;
 const VERSION: u32 = 0x2;
 const VENDOR_ID: u32 = 0x56484B53;
-const IRQ_LINE: u32 = 5;
 const QUEUE_NUM_MAX: u32 = 16;
 
 fn read_u32_from_data(data: &[u8]) -> u32 {
@@ -31,12 +30,13 @@ pub struct MMIOTransport {
     driver_features_sel: u32,
 
     irq_line: Option<Arc<Mutex<IRQHandler>>>,
+    irq_sel: u32,
 }
 
 const VIRTIO_F_VERSION_1: u64 = 1 << 32;
 
 impl MMIOTransport {
-    pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize) -> Self {
+    pub fn new(device: Box<dyn VirtioDevice + Send>, queue_num: usize, irq_sel: u32) -> Self {
         Self {
             device,
             queues: vec![VirtioQueue::new(); queue_num],
@@ -46,6 +46,7 @@ impl MMIOTransport {
             device_features_sel: 0,
             driver_features_sel: 0,
             irq_line: None,
+            irq_sel,
         }
     }
 }
@@ -107,7 +108,7 @@ impl MMIODevice for MMIOTransport {
                         irq_line
                             .lock()
                             .unwrap()
-                            .trigger_irq(IRQCommand::new(IRQ_LINE, false));
+                            .trigger_irq(IRQCommand::new(self.irq_sel, false));
                     }
                 }
             }
@@ -164,20 +165,25 @@ impl MMIODevice for MMIOTransport {
         if self.status & 4 == 0 {
             return;
         }
-        for queue in &mut self.queues {
+        for (idx, queue) in &mut self.queues.iter_mut().enumerate() {
             if queue.ready {
-                let completions = self.device.as_mut().tick(self.queue_sel, queue);
+                let completions = self.device.as_mut().tick(idx, queue);
                 if completions {
                     self.interrupt_status |= 1;
                 }
             }
         }
+
+        if self.device.update(self.queues.as_mut_slice()) {
+            self.interrupt_status |= 1;
+        }
+
         if self.interrupt_status != 0 {
             if let Some(ref irq_line) = self.irq_line {
                 irq_line
                     .lock()
                     .unwrap()
-                    .trigger_irq(IRQCommand::new(IRQ_LINE, true));
+                    .trigger_irq(IRQCommand::new(self.irq_sel, true));
             }
         }
     }

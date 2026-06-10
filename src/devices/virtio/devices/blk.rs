@@ -108,8 +108,8 @@ impl VirtioDevice for BlkVirtio {
             let header = queue.get_descriptor(guest_memory, head);
 
             if header.flags & 1 == 0 || header.len != 16 {
-                eprintln!(
-                    "blk: SKIP hdr flags={:#06x} len={}",
+                eprint!(
+                    "blk: SKIP hdr flags={:#06x} len={}\n",
                     header.flags, header.len
                 );
                 queue.push_used(guest_memory, head, 0);
@@ -128,8 +128,8 @@ impl VirtioDevice for BlkVirtio {
             };
 
             if !flags_ok {
-                eprintln!(
-                    "blk: SKIP data flags={:#06x} len={}",
+                eprint!(
+                    "blk: SKIP data flags={:#06x} len={} \n",
                     data_section.flags, data_section.len
                 );
                 queue.push_used(guest_memory, head, 0);
@@ -139,7 +139,7 @@ impl VirtioDevice for BlkVirtio {
             let status_byte = queue.get_descriptor(guest_memory, data_section.next);
 
             if status_byte.flags & 2 == 0 {
-                eprintln!("blk: SKIP status flags={:#06x}", status_byte.flags);
+                eprint!("blk: SKIP status flags={:#06x}\n", status_byte.flags);
                 queue.push_used(guest_memory, head, 0);
                 continue;
             }
@@ -183,7 +183,7 @@ impl VirtioDevice for BlkVirtio {
                             guest_memory.write_u8(status_byte.addr, 0x00);
                         }
                         Err(e) => {
-                            eprintln!("blk: WRITE sector={} err={}", request.sector, e);
+                            eprint!("blk: WRITE sector={} err={}\n", request.sector, e);
                             guest_memory.write_u8(status_byte.addr, 0x01);
                         }
                     }
@@ -196,7 +196,7 @@ impl VirtioDevice for BlkVirtio {
         }
 
         if count > 10 {
-            eprintln!("blk: batch {} requests", count);
+            eprint!("blk: batch {} requests\n", count);
         }
 
         did_work
@@ -205,4 +205,6 @@ impl VirtioDevice for BlkVirtio {
     fn read_config(&self, length: usize) -> Vec<u8> {
         self.config.to_bytes(length)
     }
+    
+    fn update(&mut self, _queues: &mut[VirtioQueue]) -> bool {false}
 }
