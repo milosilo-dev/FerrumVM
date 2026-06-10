@@ -156,8 +156,8 @@ impl NetVirtio {
                 Ok(n) => n,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No frame ready — put the descriptor back or just skip
-                    queue.push_used(guest_memory, head, 0);
-                    continue;
+                    queue.last_avail_idx = queue.last_avail_idx.wrapping_sub(1);
+                    break;
                 }
                 Err(_) => return false,
             };
@@ -177,24 +177,23 @@ impl NetVirtio {
             return false;
         };
 
+        let avail_idx = guest_memory.read_u16(queue.avail_addr + 2);
+        //print!("tx avail_idx={} last_avail_idx={}\r\n", avail_idx, queue.last_avail_idx);
+
         while let Some(head) = queue.pop_avail(guest_memory) {
             let desc = queue.get_descriptor(&guest_memory, head);
 
-            let packet_desc = if desc.flags & 1 != 0 {
-                // Has seperate descriptor for packet data
-                queue.get_descriptor(&guest_memory, desc.next)
+            let (frame_addr, frame_len) = if desc.flags & 1 != 0 {
+                let data_desc = queue.get_descriptor(&guest_memory, desc.next);
+                (data_desc.addr, data_desc.len as usize)
             } else {
-                desc
+                (desc.addr + 12, desc.len as usize - 12)
             };
 
-            let frame_len = packet_desc.len as usize - 12;
             let mut packet = vec![0u8; frame_len];
-            guest_memory.read_guest_memory(packet_desc.addr, &mut packet);
-
-            // Use packet data
+            guest_memory.read_guest_memory(frame_addr, &mut packet);
             let _ = self.tap.write_all(&packet);
-
-            queue.push_used(guest_memory, head, packet_desc.len);
+            queue.push_used(guest_memory, head, desc.len);
         }
         true
     }

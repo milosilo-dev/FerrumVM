@@ -109,7 +109,7 @@ impl VirtioDevice for BlkVirtio {
 
             if header.flags & 1 == 0 || header.len != 16 {
                 eprint!(
-                    "blk: SKIP hdr flags={:#06x} len={}\n",
+                    "blk: SKIP hdr flags={:#06x} len={}\r\n",
                     header.flags, header.len
                 );
                 queue.push_used(guest_memory, head, 0);
@@ -129,7 +129,7 @@ impl VirtioDevice for BlkVirtio {
 
             if !flags_ok {
                 eprint!(
-                    "blk: SKIP data flags={:#06x} len={} \n",
+                    "blk: SKIP data flags={:#06x} len={} \r\n",
                     data_section.flags, data_section.len
                 );
                 queue.push_used(guest_memory, head, 0);
@@ -139,7 +139,7 @@ impl VirtioDevice for BlkVirtio {
             let status_byte = queue.get_descriptor(guest_memory, data_section.next);
 
             if status_byte.flags & 2 == 0 {
-                eprint!("blk: SKIP status flags={:#06x}\n", status_byte.flags);
+                eprint!("blk: SKIP status flags={:#06x}\r\n", status_byte.flags);
                 queue.push_used(guest_memory, head, 0);
                 continue;
             }
@@ -196,7 +196,7 @@ impl VirtioDevice for BlkVirtio {
         }
 
         if count > 10 {
-            eprint!("blk: batch {} requests\n", count);
+            eprint!("blk: batch {} requests\r\n", count);
         }
 
         did_work

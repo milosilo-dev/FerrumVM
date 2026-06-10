@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{io::{self, Write}, sync::{Arc, Mutex}};
 
 use crate::{
     device_maps::mmio::MMIODevice,
@@ -54,8 +54,14 @@ impl MMIOTransport {
 impl MMIODevice for MMIOTransport {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
         if addr >= 0x100 {
+            io::stdout().flush().unwrap();
+
             let offset = (addr - 0x100) as usize;
             let cfg_bytes = self.device.read_config(offset + length);
+
+            if self.device.virtio_type() == 0x01{
+                print!("virtio-net read addr={:#x} len={} val={:?}\r\n", addr, length, cfg_bytes[offset..offset + length].to_vec());
+            }
 
             return cfg_bytes[offset..offset + length].to_vec();
         }
@@ -81,20 +87,41 @@ impl MMIODevice for MMIOTransport {
             _ => 0,
         } as u64)
             .to_le_bytes();
+
+        if self.device.virtio_type() == 0x01 {
+            print!("virtio-net read addr={:#x} len={} val={:?}\r\n", addr, length, value);
+            io::stdout().flush().unwrap();
+        }
+
         value[..length].to_vec()
     }
 
     fn write(&mut self, addr: u64, data: &[u8]) {
+        if self.device.virtio_type() == 0x01 {
+            print!("virtio-net write addr={:#x} data={:?}\r\n", addr, data);
+            io::stdout().flush().unwrap();
+        }
+
         match addr {
             0x014 => self.device_features_sel = read_u32_from_data(data),
             0x020 => {} // DriverFeatures written but not validated
             0x024 => self.driver_features_sel = read_u32_from_data(data),
             0x028 => {}
-            0x030 => self.queue_sel = data[data.len() - 1] as usize,
+            0x030 => {
+                let sel = read_u32_from_data(data) as usize;
+                if sel < self.queues.len() {
+                    self.queue_sel = sel;
+                }
+            }
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
             0x044 => {
                 let was_ready = self.queues[self.queue_sel].ready;
                 self.queues[self.queue_sel].ready = data[0] != 0;
+                if self.device.virtio_type() == 0x01 {
+                    let q = &self.queues[self.queue_sel];
+                    print!("queue {} ready={} desc={:#x} avail={:#x} used={:#x}\r\n",
+                        self.queue_sel, q.ready, q.desc_addr, q.avail_addr, q.used_addr);
+                }
                 if !was_ready && data[0] != 0 {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
