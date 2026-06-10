@@ -91,7 +91,11 @@ impl VirtioDevice for BlkVirtio {
         self.guest_memory = Some(guest_memory);
     }
 
-    fn tick(&mut self, queue: &mut VirtioQueue) -> bool {
+    fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
+        if queue_sel != 0 {
+            return false;
+        }
+
         let Some(guest_memory) = self.guest_memory.as_mut() else {
             return false;
         };

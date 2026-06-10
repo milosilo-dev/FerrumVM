@@ -23,8 +23,8 @@ impl VirtioDevice for CntVirtio {
         self.guest_memory = Some(guest_memory);
     }
 
-    fn tick(&mut self, queue: &mut VirtioQueue) -> bool {
-        if self.guest_memory.is_none() {
+    fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
+        if queue_sel != 0 || self.guest_memory.is_none() {
             return false;
         }
 

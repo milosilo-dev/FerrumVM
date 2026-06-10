@@ -163,7 +163,7 @@ impl MMIODevice for MMIOTransport {
         }
         for queue in &mut self.queues {
             if queue.ready {
-                let completions = self.device.as_mut().tick(queue);
+                let completions = self.device.as_mut().tick(self.queue_sel, queue);
                 if completions {
                     self.interrupt_status |= 1;
                 }

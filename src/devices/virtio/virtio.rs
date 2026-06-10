@@ -4,7 +4,7 @@ pub trait VirtioDevice {
     fn virtio_type(&self) -> u32;
     fn features(&self) -> u32;
     fn pass_guest_memory(&mut self, _guest_memory: VirtioGuestMemoryHandle);
-    fn tick(&mut self, queue: &mut VirtioQueue) -> bool;
+    fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool;
     fn read_config(&self, length: usize) -> Vec<u8>;
 }
 
@@ -15,6 +15,21 @@ pub struct VirtioGuestMemoryHandle {
 impl VirtioGuestMemoryHandle {
     pub fn new(mem: GuestMemoryHandle) -> Self {
         Self { mem }
+    }
+
+    pub fn read_byte(&self, addr: u64) -> u8 {
+        let borrow = self.mem.lock().unwrap();
+        for mem_region in borrow.iter() {
+            let start = mem_region.mem_offset;
+            let end = mem_region.mem_offset + mem_region.mem_size as u64;
+            if addr >= start && addr + 1 <= end {
+                let data = mem_region
+                    .read((addr - mem_region.mem_offset) as usize, 1 as usize)
+                    .unwrap();
+                return data[0];
+            }
+        }
+        0
     }
 
     pub fn read_u16(&self, addr: u64) -> u16 {
