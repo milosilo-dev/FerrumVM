@@ -67,6 +67,14 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "VM_DSDT", 0x00001000)
                     Return (0x0F)
                 }
             }
+
+            Device (NET){
+                Name (_UID, 0x04)
+                Name (_ADR, 0x3000)
+                Method (_STA, 0, NotSerialized){
+                    Return (0x0F)
+                }
+            }
         }
     }
 }

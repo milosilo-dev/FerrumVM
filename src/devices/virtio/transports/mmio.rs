@@ -88,20 +88,10 @@ impl MMIODevice for MMIOTransport {
         } as u64)
             .to_le_bytes();
 
-        if self.device.virtio_type() == 0x01 {
-            print!("virtio-net read addr={:#x} len={} val={:?}\r\n", addr, length, value);
-            io::stdout().flush().unwrap();
-        }
-
         value[..length].to_vec()
     }
 
     fn write(&mut self, addr: u64, data: &[u8]) {
-        if self.device.virtio_type() == 0x01 {
-            print!("virtio-net write addr={:#x} data={:?}\r\n", addr, data);
-            io::stdout().flush().unwrap();
-        }
-
         match addr {
             0x014 => self.device_features_sel = read_u32_from_data(data),
             0x020 => {} // DriverFeatures written but not validated
@@ -119,8 +109,8 @@ impl MMIODevice for MMIOTransport {
                 self.queues[self.queue_sel].ready = data[0] != 0;
                 if self.device.virtio_type() == 0x01 {
                     let q = &self.queues[self.queue_sel];
-                    print!("queue {} ready={} desc={:#x} avail={:#x} used={:#x}\r\n",
-                        self.queue_sel, q.ready, q.desc_addr, q.avail_addr, q.used_addr);
+                    print!("queue {} ready={} size={} desc={:#x} avail={:#x} used={:#x}\r\n",
+                        self.queue_sel, q.ready, q.size, q.desc_addr, q.avail_addr, q.used_addr);
                 }
                 if !was_ready && data[0] != 0 {
                     self.queues[self.queue_sel].last_avail_idx = 0;

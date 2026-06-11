@@ -208,7 +208,6 @@ impl VirtioQueue {
         }
 
         if entries_available > self.size {
-            // avail_idx wrapped around and indices are out of sync; resync
             self.last_avail_idx = avail_idx;
             return None;
         }
@@ -217,7 +216,6 @@ impl VirtioQueue {
         let head = mem.read_u16(self.avail_addr + ring_offset);
 
         if head >= self.size {
-            // Invalid descriptor index from guest; resync
             self.last_avail_idx = avail_idx;
             return None;
         }
@@ -234,7 +232,7 @@ impl VirtioQueue {
         mem.write_u32(self.used_addr + offset, head as u32);
         mem.write_u32(self.used_addr + offset + 4, len);
 
-        mem.write_u16(self.used_addr + 2, used_idx + 1);
+        mem.write_u16(self.used_addr + 2, used_idx.wrapping_add(1));
     }
 
     pub fn get_descriptor(&self, mem: &VirtioGuestMemoryHandle, index: u16) -> VirtqDesc {

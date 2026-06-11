@@ -1,7 +1,9 @@
 use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
+use std::ffi::CString;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::AsRawFd;
 
 struct VirtioNetConfig {
     mac: [u8; 6],
@@ -125,9 +127,47 @@ impl NetVirtio {
             .open("/dev/net/tun")
             .expect("Failed to open /dev/net/tun");
 
+        let mut ifr = [0u8; 64];
+        let cname = CString::new("ferrum-tap0").unwrap();
+        let name_bytes = cname.as_bytes_with_nul();
+        ifr[..name_bytes.len()].copy_from_slice(name_bytes);
+        let flags = (libc::IFF_TAP | libc::IFF_NO_PI) as u16;
+        ifr[16..18].copy_from_slice(&flags.to_le_bytes());
+
+        let ret = unsafe {
+            libc::ioctl(
+                fd.as_raw_fd(),
+                libc::TUNSETIFF,
+                &ifr as *const _ as *const libc::c_void,
+            )
+        };
+        if ret < 0 {
+            panic!("TUNSETIFF failed: {}", std::io::Error::last_os_error());
+        }
+
+        let req = libc::ifreq {
+            ifr_name: {
+                let mut name = [0i8; libc::IFNAMSIZ];
+                for (i, &b) in name_bytes.iter().enumerate() {
+                    name[i] = b as i8;
+                }
+                name
+            },
+            ifr_ifru: libc::__c_anonymous_ifr_ifru {
+                ifru_flags: (libc::IFF_UP | libc::IFF_RUNNING) as i16,
+            },
+        };
+        unsafe {
+            libc::ioctl(
+                libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0),
+                libc::SIOCSIFFLAGS,
+                &req as *const _ as *const libc::c_void,
+            );
+        }
+
         Self {
             guest_memory: None,
-            config: VirtioNetConfig::new([0x52, 0x54, 0x00, 0x12, 0x34, 0x56], 0, 0, 0, 0, 0, 0, 0, 0),
+            config: VirtioNetConfig::new([0x52, 0x54, 0x00, 0x12, 0x34, 0x56], 1, 0, 0, 0, 0, 0, 0, 0),
             tap: fd,
         }
     }
@@ -138,6 +178,7 @@ impl NetVirtio {
             return false;
         };
 
+        let mut did_work = false;
         while let Some(head) = queue.pop_avail(guest_memory) {
             let desc = queue.get_descriptor(guest_memory, head);
 
@@ -153,7 +194,10 @@ impl NetVirtio {
 
             let mut frame = vec![0u8; packet_desc.len as usize - 12];
             let n = match self.tap.read(&mut frame) {
-                Ok(n) => n,
+                Ok(n) => {
+                    did_work = true;
+                    n
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No frame ready — put the descriptor back or just skip
                     queue.last_avail_idx = queue.last_avail_idx.wrapping_sub(1);
@@ -168,7 +212,7 @@ impl NetVirtio {
 
             queue.push_used(guest_memory, head, 12 + frame.len() as u32);
         }
-        true
+        did_work
     }
 
     // Handle packet from client
@@ -177,10 +221,9 @@ impl NetVirtio {
             return false;
         };
 
-        let avail_idx = guest_memory.read_u16(queue.avail_addr + 2);
-        //print!("tx avail_idx={} last_avail_idx={}\r\n", avail_idx, queue.last_avail_idx);
-
+        let mut did_work = false;
         while let Some(head) = queue.pop_avail(guest_memory) {
+            did_work = true;
             let desc = queue.get_descriptor(&guest_memory, head);
 
             let (frame_addr, frame_len) = if desc.flags & 1 != 0 {
@@ -195,7 +238,7 @@ impl NetVirtio {
             let _ = self.tap.write_all(&packet);
             queue.push_used(guest_memory, head, desc.len);
         }
-        true
+        did_work
     }
 }
 

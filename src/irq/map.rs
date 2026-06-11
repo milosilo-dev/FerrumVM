@@ -32,6 +32,7 @@ impl IrqMap {
             Self::new(3, 3, 0), // COM2 (serial)
             Self::new(4, 4, 0), // COM1 (serial)
             Self::new(5, 5, 0), // Virtio-blk (MMIO)
+            Self::new(6, 6, 0), // Virtio-net (MMIO)
         ]
     }
 }
