@@ -204,7 +204,6 @@ acpi/                          # ACPI DSDT source
 - [ ] Robust disk image support
 - [ ] SMP support
 - [ ] MSI-X interrupt delivery
-- [ ] UEFI firmware support
 - [ ] Rust guest firmware (experimental)
 
 ---
@@ -213,3 +212,10 @@ acpi/                          # ACPI DSDT source
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 
+## Why I Built FerrumVM
+
+I wanted to understand how operating systems interact with hardware.
+
+Rather than writing a toy kernel, I decided to build a complete virtual machine monitor and guest firmware from scratch.
+
+The project began as an exploration of x86 booting and evolved into a Linux-capable virtual platform supporting ACPI, VirtIO devices, and the Limine boot protocol.
