@@ -208,10 +208,6 @@ acpi/                          # ACPI DSDT source
 
 ---
 
-## License
-
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
-
 ## Why I Built FerrumVM
 
 I wanted to understand how operating systems interact with hardware.
@@ -219,3 +215,9 @@ I wanted to understand how operating systems interact with hardware.
 Rather than writing a toy kernel, I decided to build a complete virtual machine monitor and guest firmware from scratch.
 
 The project began as an exploration of x86 booting and evolved into a Linux-capable virtual platform supporting ACPI, VirtIO devices, and the Limine boot protocol.
+
+---
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
