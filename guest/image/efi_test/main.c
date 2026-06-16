@@ -3,6 +3,8 @@
 #include "headers/virtqueue.h"
 #include "headers/net.h"
 
+static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* con_out;
+
 static volatile Virtqueue tx_queue __attribute__((aligned(4096)));
 static uint16_t     tx_next_desc = 0;
 static uint16_t     tx_avail_idx = 0;
@@ -87,7 +89,7 @@ int virtio_net_rx(uint8_t* buf, uint64_t length) {
 
     uint32_t ready = mmio_read(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_READY);
     if (ready != 1) {
-        serial_puts("virtio-net: queue not ready!\n");
+        con_out->OutputString(con_out, L"virtio-net: queue not ready!\n");
     }
 
     while (rx_queue.used.idx == rx_last_used) {
@@ -96,6 +98,7 @@ int virtio_net_rx(uint8_t* buf, uint64_t length) {
 
     uint32_t written = rx_queue.used.ring[rx_last_used % QUEUE_SIZE].len;
     rx_last_used++;
+    return 0;
 }
 
 // Write to device
@@ -122,7 +125,7 @@ int virtio_net_tx(uint8_t* buf, uint64_t length) {
 
     uint32_t ready = mmio_read(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_READY);
     if (ready != 1) {
-        serial_puts("virtio-net: queue not ready!\n");
+        con_out->OutputString(con_out, L"virtio-net: queue not ready!\n");
     }
 
     while (tx_queue.used.idx == tx_last_used) {
@@ -131,4 +134,11 @@ int virtio_net_tx(uint8_t* buf, uint64_t length) {
 
     uint32_t written = tx_queue.used.ring[tx_last_used % QUEUE_SIZE].len;
     tx_last_used++;
+    return 0;
+}
+
+// Entry
+void efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
+    con_out = st->ConsoleOutHandle;
+    con_out->OutputString(con_out, L"Test\n");
 }
