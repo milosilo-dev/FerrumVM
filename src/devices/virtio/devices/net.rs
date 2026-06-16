@@ -142,7 +142,7 @@ impl NetVirtio {
             )
         };
         if ret < 0 {
-            panic!("TUNSETIFF failed: {}", std::io::Error::last_os_error());
+            eprint!("TUNSETIFF failed: {}\n", std::io::Error::last_os_error());
         }
 
         let req = libc::ifreq {
