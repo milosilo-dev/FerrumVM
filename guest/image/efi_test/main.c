@@ -138,7 +138,11 @@ int virtio_net_tx(uint8_t* buf, uint64_t length) {
 }
 
 // Entry
-void efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
+EFI_STATUS EFIAPI efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
     con_out = st->ConsoleOutHandle;
-    con_out->OutputString(con_out, L"Test\n");
+    con_out->OutputString(con_out, (CHAR16*)L"Test\n");
+
+    for (;;) {
+        __asm__ volatile("cli; hlt");
+    }
 }
