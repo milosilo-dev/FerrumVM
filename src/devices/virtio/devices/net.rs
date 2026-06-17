@@ -167,7 +167,17 @@ impl NetVirtio {
 
         Self {
             guest_memory: None,
-            config: VirtioNetConfig::new([0x52, 0x54, 0x00, 0x12, 0x34, 0x56], 1, 0, 0, 0, 0, 0, 0, 0),
+            config: VirtioNetConfig::new(
+                [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
             tap: fd,
         }
     }
@@ -223,15 +233,16 @@ impl NetVirtio {
 
         let mut did_work = false;
         while let Some(head) = queue.pop_avail(guest_memory) {
-            print!("Used idx before: {:X}\r\n", guest_memory.read_u16(queue.used_addr + 2));
+            print!(
+                "Used idx before: {:X}\r\n",
+                guest_memory.read_u16(queue.used_addr + 2)
+            );
             did_work = true;
             let desc = queue.get_descriptor(&guest_memory, head);
-            print!("TX handled dec=0x{:X} head={} flags=0x{:#x} next={} used=0x{:X}\r\n", 
-                desc.addr, 
-                head, 
-                desc.flags, 
-                desc.next,
-                queue.used_addr);
+            print!(
+                "TX handled dec=0x{:X} head={} flags=0x{:#x} next={} used=0x{:X}\r\n",
+                desc.addr, head, desc.flags, desc.next, queue.used_addr
+            );
 
             let (frame_addr, frame_len) = if desc.flags & 1 != 0 {
                 let data_desc = queue.get_descriptor(&guest_memory, desc.next);
@@ -244,7 +255,10 @@ impl NetVirtio {
             guest_memory.read_guest_memory(frame_addr, &mut packet);
             let _ = self.tap.write_all(&packet);
             queue.push_used(guest_memory, head, desc.len);
-            print!("Used idx after: {:X}\r\n", guest_memory.read_u16(queue.used_addr + 2));
+            print!(
+                "Used idx after: {:X}\r\n",
+                guest_memory.read_u16(queue.used_addr + 2)
+            );
         }
         did_work
     }
@@ -275,7 +289,7 @@ impl VirtioDevice for NetVirtio {
         self.config.to_bytes(length)
     }
 
-    fn update(&mut self, queues: &mut[VirtioQueue]) -> bool {
+    fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
         let queue = &mut queues[0]; // RX queue stored inside the device
         self.tick_rx_queue(queue)
     }

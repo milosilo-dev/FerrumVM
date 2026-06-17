@@ -205,6 +205,8 @@ impl VirtioDevice for BlkVirtio {
     fn read_config(&self, length: usize) -> Vec<u8> {
         self.config.to_bytes(length)
     }
-    
-    fn update(&mut self, _queues: &mut[VirtioQueue]) -> bool {false}
+
+    fn update(&mut self, _queues: &mut [VirtioQueue]) -> bool {
+        false
+    }
 }

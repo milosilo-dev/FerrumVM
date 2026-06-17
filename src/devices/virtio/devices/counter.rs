@@ -56,5 +56,7 @@ impl VirtioDevice for CntVirtio {
         vec![]
     }
 
-    fn update(&mut self, _queues: &mut[VirtioQueue]) -> bool {false}
+    fn update(&mut self, _queues: &mut [VirtioQueue]) -> bool {
+        false
+    }
 }

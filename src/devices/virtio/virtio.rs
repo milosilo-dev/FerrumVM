@@ -6,7 +6,7 @@ pub trait VirtioDevice {
     fn pass_guest_memory(&mut self, _guest_memory: VirtioGuestMemoryHandle);
     fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool;
     fn read_config(&self, length: usize) -> Vec<u8>;
-    fn update(&mut self, queues: &mut[VirtioQueue]) -> bool;
+    fn update(&mut self, queues: &mut [VirtioQueue]) -> bool;
 }
 
 pub struct VirtioGuestMemoryHandle {
