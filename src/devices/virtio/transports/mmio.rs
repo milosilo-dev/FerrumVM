@@ -94,11 +94,8 @@ impl MMIODevice for MMIOTransport {
     fn write(&mut self, addr: u64, data: &[u8]) {
         match addr {
             0x014 => self.device_features_sel = read_u32_from_data(data),
-            0x020 => {println!("DriverFeatures={:?}", data);} // DriverFeatures written but not validated
-            0x024 => {
-                self.driver_features_sel = read_u32_from_data(data);
-                print!("Driver features sel set to {}\r\n", self.driver_features_sel);
-            },
+            0x020 => {}
+            0x024 => {self.driver_features_sel = read_u32_from_data(data);},
             0x028 => {}
             0x030 => {
                 let sel = read_u32_from_data(data) as usize;
@@ -185,6 +182,9 @@ impl MMIODevice for MMIOTransport {
         if self.status & 4 == 0 {
             return;
         }
+
+        let was_pending = self.interrupt_status != 0;
+
         for (idx, queue) in &mut self.queues.iter_mut().enumerate() {
             if queue.ready {
                 let completions = self.device.as_mut().tick(idx, queue);
@@ -198,7 +198,8 @@ impl MMIODevice for MMIOTransport {
             self.interrupt_status |= 1;
         }
 
-        if self.interrupt_status != 0 {
+        let now_pending = self.interrupt_status != 0;
+        if now_pending && !was_pending {
             if let Some(ref irq_line) = self.irq_line {
                 irq_line
                     .lock()

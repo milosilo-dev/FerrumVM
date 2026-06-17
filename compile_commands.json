@@ -1,11 +1,11 @@
 [
   {
-    "directory": "/path/to/project",
+    "directory": "./",
     "file": "guest/firmware/main.c",
     "command": "i686-elf-gcc -m32 -ffreestanding -fno-stack-protector -nostdlib -isystem /usr/lib/gcc/x86_64-linux-gnu/13/include -O2 -c guest/firmware/main.c"
   },
   {
-    "directory": "/path/to/project",
+    "directory": "./",
     "file": "guest/firmware/main64.c",
     "command": "x86_64-linux-gnu-gcc -m64 -ffreestanding -fno-stack-protector -mno-red-zone -mcmodel=kernel -fno-pic -fno-pie -nostdlib -isystem /usr/lib/gcc/x86_64-linux-gnu/13/include -O2 -c guest/firmware/main64.c"
   }

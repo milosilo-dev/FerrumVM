@@ -1,6 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
 
 use kvm_ioctls::VmFd;
@@ -52,6 +53,8 @@ impl VirtualMachine {
                         Err(e) => println!("IRQ failed: {:?}", e),
                     }
                 }
+
+                thread::sleep(Duration::from_micros(100));
             }
         });
     }

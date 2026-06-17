@@ -51,6 +51,7 @@ static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
 }
 
 static EFI_STATUS EFIAPI stub_SetCursorPosition() {
+    serial2_puts("EFI: Move Cursor\n");
     move_count++;
     if (move_count == 2) {
         serial_puts("\n");
