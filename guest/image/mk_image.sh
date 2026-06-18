@@ -5,7 +5,11 @@ cd "$SCRIPT_PATH" || exit
 IMG=disk.img
 MNT=/mnt/esp
 
-./efi_test/build.sh
+for test in ./tests/*/
+do
+    bash "$test/build.sh"
+done
+
 cp $1 BOOTX64.EFI
 
 ./initramfs/make_initramfs.sh

@@ -104,6 +104,12 @@ int virtio_net_init(void){
     uint32_t features = mmio_read(VIRTIO_NET_BASE, VIRTIO_MMIO_DEVICE_FEATURES);
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_DRVR_FEATURES, features);
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_STATUS, VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER | VIRTIO_STATUS_FEATURES_OK);
+    uint32_t status = mmio_read(VIRTIO_NET_BASE, VIRTIO_MMIO_STATUS);
+
+    if (!(status & VIRTIO_STATUS_FEATURES_OK)) {
+        print("FEATURES REJECTED\n");
+        return -1;
+    }
 
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_SEL, 0);
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_NUM, QUEUE_SIZE);
@@ -120,7 +126,7 @@ int virtio_net_init(void){
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_DEVICE_LOW,   rx_used_addr);
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_DEVICE_HIGH,  0);
 
-    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_READY, 1);
+    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_READY, 0);
 
     // Init TX queue
     uint32_t tx_desc_addr  = (uint32_t)&tx_queue.desc;
@@ -147,8 +153,6 @@ int virtio_net_init(void){
     return 0;
 }
 
-// Read from device
-//      buf must have space for a packet descriptor before the data section
 static int wait_used(const volatile VirtqUsed *used, uint16_t *last, uint32_t timeout) {
     for (uint32_t i = 0; i < timeout; i++) {
         __asm__ volatile("pause");
@@ -207,7 +211,9 @@ int virtio_net_rx(uint8_t* buf, uint64_t length) {
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 0);
 
     if (!wait_used(&rx_queue.used, &rx_last_used, 10000000)) {
-        print("RX timeout\n");
+        print("RX timeout last_used=");
+        printx(rx_last_used);
+        print("\n");
         return -1;
     }
     uint32_t written = rx_queue.used.ring[(rx_last_used - 1) % QUEUE_SIZE].len;
