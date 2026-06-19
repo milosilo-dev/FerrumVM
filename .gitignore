@@ -12,3 +12,4 @@ guest/image/initramfs/initramfs-linux.img
 acpi/*.hex
 acpi/*.aml
 ferrum-firmware.log
+ferrum-kernel.log
