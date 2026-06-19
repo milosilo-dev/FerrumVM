@@ -157,8 +157,7 @@ impl MMIODevice for MMIOTransport {
                     }
                 }
             }
-            0x060 => {}
-            0x064 => {
+            0x060 | 0x064 => {
                 let ack = read_u32_from_data(data);
                 self.interrupt_status &= !ack;
                 if self.interrupt_status == 0 {
