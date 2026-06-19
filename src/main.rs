@@ -22,10 +22,13 @@ use ferrumvm::{
 
 fn main() {
     print!("\n\r");
-    let log_file = File::create("ferrum-firmware.log").unwrap();
+    let firmware_log_file = File::create("ferrum-firmware.log").unwrap();
+    let kernel_log_file = File::create("ferrum-kernel.log").unwrap();
 
     let com1 = Box::new(Serial::new(SerialMode::Terminal));
-    let com2 = Box::new(Serial::new(SerialMode::LogFile(log_file)));
+    let com2 = Box::new(Serial::new(SerialMode::LogFile(firmware_log_file)));
+    let com3 = Box::new(Serial::new(SerialMode::LogFile(kernel_log_file)));
+
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
     let pci = Box::new(PCI::new());
@@ -56,6 +59,7 @@ fn main() {
             IODeviceRegion::new(0x40..=0x43, timer),
             IODeviceRegion::new(0x3f8..=0x3ff, com1),
             IODeviceRegion::new(0x2f8..=0x2ff, com2),
+            IODeviceRegion::new(0x3E8..=0x3EF, com3),
             IODeviceRegion::new(0x70..=0x71, cmos),
         ],
         mmio_devices: vec![

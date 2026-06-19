@@ -108,10 +108,6 @@ impl VirtioDevice for BlkVirtio {
             let header = queue.get_descriptor(guest_memory, head);
 
             if header.flags & 1 == 0 || header.len != 16 {
-                eprint!(
-                    "blk: SKIP hdr flags={:#06x} len={}\r\n",
-                    header.flags, header.len
-                );
                 queue.push_used(guest_memory, head, 0);
                 continue;
             }

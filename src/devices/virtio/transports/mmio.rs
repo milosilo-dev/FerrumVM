@@ -64,15 +64,6 @@ impl MMIODevice for MMIOTransport {
             let offset = (addr - 0x100) as usize;
             let cfg_bytes = self.device.read_config(offset + length);
 
-            if self.device.virtio_type() == 0x01 {
-                print!(
-                    "virtio-net read addr={:#x} len={} val={:?}\r\n",
-                    addr,
-                    length,
-                    cfg_bytes[offset..offset + length].to_vec()
-                );
-            }
-
             return cfg_bytes[offset..offset + length].to_vec();
         }
 
@@ -128,13 +119,6 @@ impl MMIODevice for MMIOTransport {
             0x044 => {
                 let was_ready = self.queues[self.queue_sel].ready;
                 self.queues[self.queue_sel].ready = data[0] != 0;
-                if self.device.virtio_type() == 0x01 {
-                    let q = &self.queues[self.queue_sel];
-                    print!(
-                        "queue {} ready={} size={} desc={:#x} avail={:#x} used={:#x}\r\n",
-                        self.queue_sel, q.ready, q.size, q.desc_addr, q.avail_addr, q.used_addr
-                    );
-                }
                 if !was_ready && data[0] != 0 {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
