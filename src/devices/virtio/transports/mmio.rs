@@ -125,6 +125,10 @@ impl MMIODevice for MMIOTransport {
             }
             0x050 => {
                 let queue_idx = read_u32_from_data(data) as usize;
+
+                if self.device.virtio_type() == 0x1 {
+                    eprintln!("[notify] queue_idx={} size={} ready={}", queue_idx, self.queues[queue_idx].size, self.queues[queue_idx].ready);
+                }
                 if queue_idx < self.queues.len() && self.queues[queue_idx].ready {
                     let was_pending = self.interrupt_status != 0;
                     if self.device.as_mut().tick(queue_idx, &mut self.queues[queue_idx]) {

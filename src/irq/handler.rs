@@ -32,12 +32,6 @@ impl IRQHandler {
     }
 
     pub fn trigger_irq(&mut self, irq: IRQCommand) {
-        if irq.irq_line == 6 {
-            print!(
-                "Triggered IRQ: line={}, value={}\r\n",
-                irq.irq_line, irq.value
-            );
-        }
         self.commands.push_back(irq);
     }
 
