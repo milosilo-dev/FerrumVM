@@ -197,6 +197,10 @@ impl MMIODevice for MMIOTransport {
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0x00000000FFFFFFFF) | (val << 32);
             }
+            0x100.. => {
+                let offset = (addr - 0x100) as usize;
+                self.device.write_config(offset, data);
+            }
             _ => {}
         }
     }

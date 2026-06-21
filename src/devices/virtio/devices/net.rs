@@ -277,6 +277,15 @@ impl VirtioDevice for NetVirtio {
         self.config.to_bytes(length)
     }
 
+    fn write_config(&mut self, offset: usize, data: &[u8]) {
+        if offset < 6 {
+            let end = (offset + data.len()).min(6);
+            for (i, &byte) in data.iter().enumerate().take(end - offset) {
+                self.config.mac[offset + i] = byte;
+            }
+        }
+    }
+
     fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
         let queue = &mut queues[0]; // RX queue stored inside the device
         self.tick_rx_queue(queue)
