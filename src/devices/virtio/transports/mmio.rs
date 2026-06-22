@@ -133,12 +133,15 @@ impl MMIODevice for MMIOTransport {
                     let was_pending = self.interrupt_status != 0;
                     let did_work = self.device.as_mut().tick(queue_idx, &mut self.queues[queue_idx]);
                     if did_work {
-                        self.interrupt_status |= 1 << queue_idx;
+                        self.interrupt_status |= 1;
                     }
                     let now_pending = self.interrupt_status != 0;
                     if now_pending && !was_pending {
                         if let Some(ref vm_fd) = self.vm_fd {
-                            let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
+                            match vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true) {
+                                Ok(_) => eprintln!("[dbg] IRQ{} raise OK", self.irq_sel),
+                                Err(e) => eprintln!("[dbg] IRQ{} RAISE FAILED: {:?}", self.irq_sel, e),
+                            }
                         }
                     }
                 }
@@ -218,7 +221,7 @@ impl MMIODevice for MMIOTransport {
             if queue.ready {
                 let completions = self.device.as_mut().tick(idx, queue);
                 if completions {
-                    self.interrupt_status |= 1 << idx;
+                    self.interrupt_status |= 1;
                 }
             }
         }
@@ -227,7 +230,7 @@ impl MMIODevice for MMIOTransport {
             self.interrupt_status |= 1;
         }
 
-        let now_pending = self.interrupt_status != 0;
+            let now_pending = self.interrupt_status != 0;
         if now_pending && !was_pending {
             if let Some(ref vm_fd) = self.vm_fd {
                 let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
