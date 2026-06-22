@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::sync::atomic::{fence, Ordering};
+
 use crate::memory_region::GuestMemoryHandle;
 
 pub trait VirtioDevice {
@@ -186,6 +189,7 @@ pub struct VirtioQueue {
     pub avail_addr: u64,
     pub used_addr: u64,
     pub last_avail_idx: u16,
+    pub last_written_used_idx: Cell<u16>,
 }
 
 impl VirtioQueue {
@@ -197,6 +201,7 @@ impl VirtioQueue {
             avail_addr: 0,
             used_addr: 0,
             last_avail_idx: 0,
+            last_written_used_idx: Cell::new(0),
         }
     }
 
@@ -233,7 +238,16 @@ impl VirtioQueue {
         mem.write_u32(self.used_addr + offset, head as u32);
         mem.write_u32(self.used_addr + offset + 4, len);
 
-        mem.write_u16(self.used_addr + 2, used_idx.wrapping_add(1));
+        fence(Ordering::SeqCst);
+
+        let new_idx = used_idx.wrapping_add(1);
+        mem.write_u16(self.used_addr + 2, new_idx);
+
+        fence(Ordering::SeqCst);
+
+        let verify = mem.read_u16(self.used_addr + 2);
+        debug_assert!(verify == new_idx, "push_used verify FAILED: wrote {} read back {}", new_idx, verify);
+        self.last_written_used_idx.set(new_idx);
     }
 
     pub fn get_descriptor(&self, mem: &VirtioGuestMemoryHandle, index: u16) -> VirtqDesc {
@@ -251,5 +265,70 @@ impl VirtioQueue {
         let ring_offset = 4 + ((idx % self.size) as u64) * 2;
 
         mem.read_u16(self.avail_addr + ring_offset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use crate::memory_region::MemoryRegion;
+
+    #[test]
+    fn test_push_used_updates_guest_memory() {
+        let queue_size = 16;
+        let used_ring_size = 4 + 2 + queue_size as usize * 8; // flags(2) + idx(2) + ring entries(8 each)
+        let mut backing = vec![0u8; used_ring_size + 64];
+        let ptr = backing.as_mut_ptr();
+        let mem_offset = 0x1000u64;
+
+        let mem_region = MemoryRegion::new(ptr, backing.len(), mem_offset);
+        let handle = Arc::new(Mutex::new(vec![mem_region]));
+        let mut vmem = VirtioGuestMemoryHandle::new(handle);
+
+        let used_addr = mem_offset;
+
+        vmem.write_u16(used_addr + 2, 0); // idx = 0
+        vmem.write_u16(used_addr, 0); // flags = 0
+
+        let queue = VirtioQueue {
+            size: queue_size as u16,
+            ready: true,
+            desc_addr: 0,
+            avail_addr: 0,
+            used_addr,
+            last_avail_idx: 0,
+            last_written_used_idx: Cell::new(0),
+        };
+
+        queue.push_used(&mut vmem, 3, 64);
+
+        let idx = vmem.read_u16(used_addr + 2);
+        assert_eq!(idx, 1, "used idx should be 1 after first push");
+        assert_eq!(queue.last_written_used_idx.get(), 1, "Cell tracking should match");
+
+        let entry_id = vmem.read_u32(used_addr + 4);
+        let entry_len = vmem.read_u32(used_addr + 8);
+        assert_eq!(entry_id, 3, "first ring entry id should be head=3");
+        assert_eq!(entry_len, 64, "first ring entry len should be 64");
+
+        queue.push_used(&mut vmem, 7, 128);
+
+        let idx = vmem.read_u16(used_addr + 2);
+        assert_eq!(idx, 2, "used idx should be 2 after second push");
+        assert_eq!(queue.last_written_used_idx.get(), 2, "Cell tracking should match");
+
+        let entry_id = vmem.read_u32(used_addr + 4 + 8);
+        let entry_len = vmem.read_u32(used_addr + 4 + 8 + 4);
+        assert_eq!(entry_id, 7, "second ring entry id should be head=7");
+        assert_eq!(entry_len, 128, "second ring entry len should be 128");
+
+        for i in 0..queue_size * 2 {
+            queue.push_used(&mut vmem, i as u16, (i * 10) as u32);
+        }
+
+        let idx = vmem.read_u16(used_addr + 2);
+        assert_eq!(idx, 2 + queue_size as u16 * 2, "idx after wrap-around");
+        assert_eq!(queue.last_written_used_idx.get(), idx);
     }
 }

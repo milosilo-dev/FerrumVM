@@ -112,6 +112,7 @@ impl VirtualMachine {
 
         for mut mmio_device in machine_config.mmio_devices {
             mmio_device.irq_handler(Arc::clone(&irq_handler));
+            mmio_device.vm_fd(Arc::clone(&vm));
             mmio_device.pass_guest_memory(Arc::clone(&guest_memory));
             this.register_mmio_device(mmio_device);
         }

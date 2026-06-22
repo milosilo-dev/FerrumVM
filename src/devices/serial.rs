@@ -2,7 +2,10 @@ use std::{
     collections::VecDeque,
     fs::File,
     io::{self, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use crossterm::{
@@ -43,29 +46,40 @@ impl Serial {
         let queue = Arc::new(Mutex::new(Vec::<u8>::new()));
 
         if let SerialMode::Terminal = mode {
-            enable_raw_mode().unwrap();
-            std::thread::spawn({
-                let queue = queue.clone();
+            let is_tty = unsafe { libc::isatty(0) != 0 };
+            let raw_enabled = Arc::new(AtomicBool::new(false));
 
-                move || loop {
-                    match event::read().unwrap() {
-                        Event::Key(KeyEvent {
-                            code: KeyCode::Char('z'),
-                            kind: KeyEventKind::Press,
-                            modifiers: KeyModifiers::CONTROL,
-                            ..
-                        }) => {
-                            disable_raw_mode().unwrap();
-                            println!("");
-                            std::process::exit(0);
-                        }
-                        Event::Key(KeyEvent {
-                            code,
-                            kind: KeyEventKind::Press,
-                            modifiers,
-                            ..
-                        }) => {
-                            let bytes: &[u8] = match code {
+            if is_tty {
+                enable_raw_mode().unwrap();
+                raw_enabled.store(true, Ordering::Relaxed);
+            }
+
+            if is_tty {
+                let raw_enabled_clone = raw_enabled.clone();
+                std::thread::spawn({
+                    let queue = queue.clone();
+
+                    move || loop {
+                        match event::read().unwrap() {
+                            Event::Key(KeyEvent {
+                                code: KeyCode::Char('z'),
+                                kind: KeyEventKind::Press,
+                                modifiers: KeyModifiers::CONTROL,
+                                ..
+                            }) => {
+                                if raw_enabled_clone.load(Ordering::Relaxed) {
+                                    disable_raw_mode().unwrap();
+                                }
+                                println!("");
+                                std::process::exit(0);
+                            }
+                            Event::Key(KeyEvent {
+                                code,
+                                kind: KeyEventKind::Press,
+                                modifiers,
+                                ..
+                            }) => {
+                                let bytes: &[u8] = match code {
                                 // Control characters
                                 KeyCode::Char(c) if modifiers.contains(KeyModifiers::CONTROL) => {
                                     let ctrl_byte = (c as u8) & 0x1F;
@@ -125,6 +139,7 @@ impl Serial {
                     }
                 }
             });
+            }
         }
 
         Self {

@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use kvm_ioctls::VmFd;
+
 use crate::{
     irq::handler::IRQHandler,
     memory_region::{GuestMemoryHandle, MemoryRegion},
@@ -12,6 +14,7 @@ pub trait MMIODevice: Send {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;
     fn write(&mut self, addr: u64, data: &[u8]);
     fn irq_handler(&mut self, _irq_handler: Arc<Mutex<IRQHandler>>) {}
+    fn vm_fd(&mut self, _vm_fd: Arc<Mutex<VmFd>>) {}
     fn pass_guest_memory(&mut self, _guest_memory: GuestMemoryHandle) {}
     fn tick(&mut self) {}
 }
@@ -34,17 +37,21 @@ impl MMIODeviceRegion {
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
-        self.mmio_device
-            .read(addr - *self.addr_range.start(), length)
+        let dev_off = addr - *self.addr_range.start();
+        self.mmio_device.read(dev_off, length)
     }
 
     pub fn write(&mut self, addr: u64, data: &[u8]) {
-        self.mmio_device
-            .write(addr - *self.addr_range.start(), data);
+        let dev_off = addr - *self.addr_range.start();
+        self.mmio_device.write(dev_off, data);
     }
 
     pub fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
         self.mmio_device.irq_handler(irq_handler);
+    }
+
+    pub fn vm_fd(&mut self, vm_fd: Arc<Mutex<VmFd>>) {
+        self.mmio_device.vm_fd(vm_fd);
     }
 
     pub fn tick(&mut self) {

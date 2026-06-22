@@ -3,10 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use kvm_ioctls::VmFd;
+
 use crate::{
     device_maps::mmio::MMIODevice,
     devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
-    irq::handler::{IRQCommand, IRQHandler},
     memory_region::GuestMemoryHandle,
 };
 
@@ -33,8 +34,9 @@ pub struct MMIOTransport {
     driver_features_sel: u32,
     driver_features: u64,
 
-    irq_line: Option<Arc<Mutex<IRQHandler>>>,
+    vm_fd: Option<Arc<Mutex<VmFd>>>,
     irq_sel: u32,
+    guest_memory: Option<VirtioGuestMemoryHandle>,
 }
 
 const VIRTIO_F_VERSION_1: u64 = 1 << 32;
@@ -50,8 +52,9 @@ impl MMIOTransport {
             device_features_sel: 0,
             driver_features_sel: 0,
             driver_features: 0,
-            irq_line: None,
+            vm_fd: None,
             irq_sel,
+            guest_memory: None,
         }
     }
 }
@@ -84,7 +87,7 @@ impl MMIODevice for MMIOTransport {
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
             0x070 => self.status,
-            0x060 => self.interrupt_status,
+              0x060 => self.interrupt_status,
             _ => 0,
         } as u64)
             .to_le_bytes();
@@ -123,37 +126,29 @@ impl MMIODevice for MMIOTransport {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
             }
-            0x050 => {
+              0x050 => {
                 let queue_idx = read_u32_from_data(data) as usize;
 
-                if self.device.virtio_type() == 0x1 {
-                    eprintln!("[notify] queue_idx={} size={} ready={}", queue_idx, self.queues[queue_idx].size, self.queues[queue_idx].ready);
-                }
                 if queue_idx < self.queues.len() && self.queues[queue_idx].ready {
                     let was_pending = self.interrupt_status != 0;
-                    if self.device.as_mut().tick(queue_idx, &mut self.queues[queue_idx]) {
-                        self.interrupt_status |= 1;
+                    let did_work = self.device.as_mut().tick(queue_idx, &mut self.queues[queue_idx]);
+                    if did_work {
+                        self.interrupt_status |= 1 << queue_idx;
                     }
                     let now_pending = self.interrupt_status != 0;
                     if now_pending && !was_pending {
-                        if let Some(ref irq_line) = self.irq_line {
-                            irq_line
-                                .lock()
-                                .unwrap()
-                                .trigger_irq(IRQCommand::new(self.irq_sel, true));
+                        if let Some(ref vm_fd) = self.vm_fd {
+                            let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
                         }
                     }
                 }
             }
-            0x060 | 0x064 => {
+              0x060 | 0x064 => {
                 let ack = read_u32_from_data(data);
                 self.interrupt_status &= !ack;
                 if self.interrupt_status == 0 {
-                    if let Some(ref irq_line) = self.irq_line {
-                        irq_line
-                            .lock()
-                            .unwrap()
-                            .trigger_irq(IRQCommand::new(self.irq_sel, false));
+                    if let Some(ref vm_fd) = self.vm_fd {
+                        let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, false);
                     }
                 }
             }
@@ -167,32 +162,32 @@ impl MMIODevice for MMIOTransport {
                 }
                 self.status = val;
             }
-            0x080 => {
+             0x080 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0xFFFFFFFF00000000) | val;
             }
-            0x084 => {
+             0x084 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0x00000000FFFFFFFF) | (val << 32);
             }
-            0x090 => {
+             0x090 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0xFFFFFFFF00000000) | val;
             }
-            0x094 => {
+             0x094 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0x00000000FFFFFFFF) | (val << 32);
             }
-            0x0A0 => {
+             0x0A0 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0xFFFFFFFF00000000) | val;
             }
-            0x0A4 => {
+             0x0A4 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0x00000000FFFFFFFF) | (val << 32);
@@ -206,6 +201,8 @@ impl MMIODevice for MMIOTransport {
     }
 
     fn pass_guest_memory(&mut self, guest_memory: GuestMemoryHandle) {
+        let vgm = VirtioGuestMemoryHandle::new(guest_memory.clone());
+        self.guest_memory = Some(vgm);
         self.device
             .pass_guest_memory(VirtioGuestMemoryHandle::new(guest_memory));
     }
@@ -221,7 +218,7 @@ impl MMIODevice for MMIOTransport {
             if queue.ready {
                 let completions = self.device.as_mut().tick(idx, queue);
                 if completions {
-                    self.interrupt_status |= 1;
+                    self.interrupt_status |= 1 << idx;
                 }
             }
         }
@@ -232,16 +229,13 @@ impl MMIODevice for MMIOTransport {
 
         let now_pending = self.interrupt_status != 0;
         if now_pending && !was_pending {
-            if let Some(ref irq_line) = self.irq_line {
-                irq_line
-                    .lock()
-                    .unwrap()
-                    .trigger_irq(IRQCommand::new(self.irq_sel, true));
+            if let Some(ref vm_fd) = self.vm_fd {
+                let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
             }
         }
     }
 
-    fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
-        self.irq_line = Some(irq_handler);
+    fn vm_fd(&mut self, vm_fd: Arc<Mutex<VmFd>>) {
+        self.vm_fd = Some(vm_fd);
     }
 }

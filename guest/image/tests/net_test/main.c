@@ -218,6 +218,87 @@ static void virtio_net_tx_submit(uint8_t* buf, uint64_t length) {
     virtio_mb();
 }
 
+// ---- Chained-descriptor TX (like Linux does) ----
+// Submit TX with header and data in separate chained descriptors:
+//   desc[h]: 12-byte virtio-net header (flags = NEXT, next = h+1)
+//   desc[h+1]: ethernet frame data (flags = 0)
+static int virtio_net_tx_chained(uint8_t* hdr_buf, uint8_t* data_buf, uint64_t data_len) {
+    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_SEL, 1);
+
+    uint32_t h = tx_next_desc % QUEUE_SIZE;
+    tx_next_desc = (tx_next_desc + 1) % QUEUE_SIZE;
+    uint32_t d = tx_next_desc % QUEUE_SIZE;
+    tx_next_desc = (tx_next_desc + 1) % QUEUE_SIZE;
+
+    // Descriptor for 12-byte virtio-net header, chains to data
+    tx_queue.desc[h].addr   = (uint64_t)(hdr_buf);
+    tx_queue.desc[h].len    = 12;
+    tx_queue.desc[h].flags  = VIRTQ_DESC_F_NEXT;
+    tx_queue.desc[h].next   = d;
+
+    // Descriptor for ethernet frame data
+    tx_queue.desc[d].addr   = (uint64_t)(data_buf);
+    tx_queue.desc[d].len    = data_len;
+    tx_queue.desc[d].flags  = 0;
+    tx_queue.desc[d].next   = 0;
+
+    tx_queue.avail.ring[tx_avail_idx % QUEUE_SIZE] = h;
+    tx_avail_idx++;
+    __asm__ volatile("" ::: "memory");
+    tx_queue.avail.idx = tx_avail_idx;
+    virtio_mb();
+    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 1);
+
+    if (!wait_used(&tx_queue.used, &tx_last_used, 10000000)) {
+        print("TX chained timeout\n");
+        return -1;
+    }
+    return 0;
+}
+
+// Submit TX with header + 2 data fragments (3 chained descriptors):
+//   desc[h]: header (NEXT -> h+1)
+//   desc[d1]: data frag 1 (NEXT -> d2)
+//   desc[d2]: data frag 2 (flags=0)
+static int virtio_net_tx_triple_chain(uint8_t* hdr_buf, uint8_t* data1_buf, uint64_t data1_len, uint8_t* data2_buf, uint64_t data2_len) {
+    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_SEL, 1);
+
+    uint32_t h  = tx_next_desc % QUEUE_SIZE;
+    tx_next_desc = (tx_next_desc + 1) % QUEUE_SIZE;
+    uint32_t d1 = tx_next_desc % QUEUE_SIZE;
+    tx_next_desc = (tx_next_desc + 1) % QUEUE_SIZE;
+    uint32_t d2 = tx_next_desc % QUEUE_SIZE;
+    tx_next_desc = (tx_next_desc + 1) % QUEUE_SIZE;
+
+    tx_queue.desc[h].addr   = (uint64_t)(hdr_buf);
+    tx_queue.desc[h].len    = 12;
+    tx_queue.desc[h].flags  = VIRTQ_DESC_F_NEXT;
+    tx_queue.desc[h].next   = d1;
+
+    tx_queue.desc[d1].addr  = (uint64_t)(data1_buf);
+    tx_queue.desc[d1].len   = data1_len;
+    tx_queue.desc[d1].flags = VIRTQ_DESC_F_NEXT;
+    tx_queue.desc[d1].next  = d2;
+
+    tx_queue.desc[d2].addr  = (uint64_t)(data2_buf);
+    tx_queue.desc[d2].len   = data2_len;
+    tx_queue.desc[d2].flags = 0;
+    tx_queue.desc[d2].next  = 0;
+
+    tx_queue.avail.ring[tx_avail_idx % QUEUE_SIZE] = h;
+    tx_avail_idx++;
+    __asm__ volatile("" ::: "memory");
+    tx_queue.avail.idx = tx_avail_idx;
+    virtio_mb();
+    mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 1);
+
+    if (!wait_used(&tx_queue.used, &tx_last_used, 10000000)) {
+        print("TX triple-chain timeout\n");
+        return -1;
+    }
+    return 0;
+}
+
 // Trigger a single kick and wait for all outstanding TX to drain.
 static int virtio_net_tx_drain(void) {
     mmio_write(VIRTIO_NET_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 1);
@@ -331,6 +412,52 @@ static int test_tx_no_kick(void) {
     return 0;
 }
 
+static int test_tx_chained(void) {
+    print("  TX chained: ");
+    uint8_t hdr_buf[12] __attribute__((aligned(16)));
+    uint8_t data_buf[128] __attribute__((aligned(16)));
+    memset(hdr_buf, 0, 12);
+    memset(data_buf, 0, 128);
+    // Full ethernet frame (dst + src + EtherType + payload) in data buf
+    data_buf[0] = 0xFF; data_buf[1] = 0xFF; data_buf[2] = 0xFF;
+    data_buf[3] = 0xFF; data_buf[4] = 0xFF; data_buf[5] = 0xFF;
+    data_buf[6] = 0x52; data_buf[7] = 0x54;
+    data_buf[8] = 0x00; data_buf[9] = 0x12; data_buf[10] = 0x34; data_buf[11] = 0x56;
+    data_buf[12] = 0x08; data_buf[13] = 0x00;
+    data_buf[14] = 0xCA; data_buf[15] = 0xFE;  // magic bytes
+    if (virtio_net_tx_chained(hdr_buf, data_buf, 60) < 0) {
+        print("FAIL\n");
+        return -1;
+    }
+    print("OK\n");
+    return 0;
+}
+
+static int test_tx_triple_chain(void) {
+    print("  TX triple-chain: ");
+    uint8_t hdr_buf[12] __attribute__((aligned(16)));
+    uint8_t data1_buf[64] __attribute__((aligned(16)));
+    uint8_t data2_buf[64] __attribute__((aligned(16)));
+    memset(hdr_buf, 0, 12);
+    memset(data1_buf, 0, 64);
+    memset(data2_buf, 0, 64);
+    // First fragment: dst MAC + src MAC + EtherType
+    data1_buf[0] = 0xFF; data1_buf[1] = 0xFF; data1_buf[2] = 0xFF;
+    data1_buf[3] = 0xFF; data1_buf[4] = 0xFF; data1_buf[5] = 0xFF;
+    data1_buf[6] = 0x52; data1_buf[7] = 0x54;
+    data1_buf[8] = 0x00; data1_buf[9] = 0x12; data1_buf[10] = 0x34; data1_buf[11] = 0x56;
+    data1_buf[12] = 0x08; data1_buf[13] = 0x00; // EtherType IPv4
+    // Second fragment: payload
+    data2_buf[0] = 0xDE; data2_buf[1] = 0xAD;
+    data2_buf[2] = 0xBE; data2_buf[3] = 0xEF;
+    if (virtio_net_tx_triple_chain(hdr_buf, data1_buf, 14, data2_buf, 46) < 0) {
+        print("FAIL\n");
+        return -1;
+    }
+    print("OK\n");
+    return 0;
+}
+
 // Entry
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
     int failures = 0;
@@ -350,6 +477,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
     failures += test_tx_multi(10);
     failures += test_tx_batch(5);
     failures += test_tx_no_kick();
+    failures += test_tx_chained();
+    failures += test_tx_triple_chain();
 
     // ---- RX test ----
     uint8_t rx_buf[128];

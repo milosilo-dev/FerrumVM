@@ -58,13 +58,13 @@ impl VirtioNetConfig {
 }
 
 struct PacketDesc {
-    flags: u8, // Bit 0: Needs checksum; Bit 1: Received packet has valid data; Bit 2: If VIRTIO_NET_F_RSC_EXT was negotiated
-    segmentation_offload: u8, // 0:None 1:TCPv4 3:UDP 4:TCPv6 0x80:ECN
-    desc_length: u16, // Size of desc to be used during segmentation.
-    segment_length: u16, // Maximum segment size (not including desc).
-    checksum_start: u16, // The position to begin calculating the checksum.
-    checksum_offset: u16, // The position after ChecksumStart to store the checksum.
-    buffer_count: u16, // Used when merging buffers.
+    flags: u8,
+    segmentation_offload: u8,
+    desc_length: u16,
+    segment_length: u16,
+    checksum_start: u16,
+    checksum_offset: u16,
+    buffer_count: u16,
 }
 
 impl PacketDesc {
@@ -182,7 +182,6 @@ impl NetVirtio {
         }
     }
 
-    // Send Packet to client
     fn tick_rx_queue(&mut self, queue: &mut VirtioQueue) -> bool {
         let Some(guest_memory) = self.guest_memory.as_mut() else {
             return false;
@@ -193,13 +192,11 @@ impl NetVirtio {
             let desc = queue.get_descriptor(guest_memory, head);
 
             let packet_desc = if desc.flags & 1 != 0 {
-                // Has seperate descriptor for packet data
                 queue.get_descriptor(guest_memory, desc.next)
             } else {
                 desc
             };
 
-            // Use these to create the packet
             let header = PacketDesc::new(0, 0, 0, 0, 1, 0, 0);
 
             let mut frame = vec![0u8; packet_desc.len as usize - 12];
@@ -209,7 +206,6 @@ impl NetVirtio {
                     n
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // No frame ready — put the descriptor back or just skip
                     queue.last_avail_idx = queue.last_avail_idx.wrapping_sub(1);
                     break;
                 }
@@ -225,7 +221,6 @@ impl NetVirtio {
         did_work
     }
 
-    // Handle packet from client
     fn tick_tx_queue(&mut self, queue: &mut VirtioQueue) -> bool {
         let Some(guest_memory) = self.guest_memory.as_mut() else {
             return false;
@@ -234,19 +229,44 @@ impl NetVirtio {
         let mut did_work = false;
         while let Some(head) = queue.pop_avail(guest_memory) {
             did_work = true;
+            eprintln!("[dbg] TX pop head={} used_addr=0x{:x}", head, queue.used_addr);
             let desc = queue.get_descriptor(&guest_memory, head);
 
-            let (frame_addr, frame_len) = if desc.flags & 1 != 0 {
-                let data_desc = queue.get_descriptor(&guest_memory, desc.next);
-                (data_desc.addr, data_desc.len as usize)
+            let mut packet = Vec::new();
+            let mut total_len = 0u32;
+
+            if desc.flags & 1 != 0 {
+                let mut current = desc.next;
+                let mut max_chain = 0u16;
+                loop {
+                    if max_chain > 32 {
+                        break;
+                    }
+                    max_chain += 1;
+                    let data_desc = queue.get_descriptor(&guest_memory, current);
+                    let mut buf = vec![0u8; data_desc.len as usize];
+                    guest_memory.read_guest_memory(data_desc.addr, &mut buf);
+                    packet.extend_from_slice(&buf);
+                    total_len += data_desc.len;
+                    if data_desc.flags & 1 == 0 {
+                        break;
+                    }
+                    current = data_desc.next;
+                }
             } else {
-                (desc.addr + 12, desc.len as usize - 12)
+                if desc.len < 12 {
+                    let _ = self.tap.write_all(&[]);
+                    queue.push_used(guest_memory, head, desc.len);
+                    continue;
+                }
+                let frame_len = desc.len as usize - 12;
+                packet.resize(frame_len, 0);
+                guest_memory.read_guest_memory(desc.addr + 12, &mut packet);
+                total_len = desc.len;
             };
 
-            let mut packet = vec![0u8; frame_len];
-            guest_memory.read_guest_memory(frame_addr, &mut packet);
             let _ = self.tap.write_all(&packet);
-            queue.push_used(guest_memory, head, desc.len);
+            queue.push_used(guest_memory, head, total_len);
         }
         did_work
     }
@@ -258,7 +278,9 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u32 {
-        1 << 5
+        (1 << 0)  // VIRTIO_NET_F_CSUM
+        | (1 << 5)  // VIRTIO_NET_F_MAC
+        | (1 << 16) // VIRTIO_NET_F_STATUS
     }
 
     fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
@@ -287,7 +309,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
-        let queue = &mut queues[0]; // RX queue stored inside the device
+        let queue = &mut queues[0];
         self.tick_rx_queue(queue)
     }
 }
