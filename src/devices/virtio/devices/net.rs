@@ -1,307 +1,198 @@
 use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
-use std::ffi::CString;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::process::Command;
 
-struct VirtioNetConfig {
-    mac: [u8; 6],
-    status: u16,
-    max_virtqueue_pairs: u16,
-    mtu: u16,
-    speed: u32,
-    duplex: u8,
-    rss_max_key_size: u8,
-    rss_max_indirection_table_length: u16,
-    supported_hash_types: u32,
-}
+const RX_QUEUE_FILL: usize = 32;
 
-impl VirtioNetConfig {
-    fn new(
-        mac: [u8; 6],
-        status: u16,
-        max_virtqueue_pairs: u16,
-        mtu: u16,
-        speed: u32,
-        duplex: u8,
-        rss_max_key_size: u8,
-        rss_max_indirection_table_length: u16,
-        supported_hash_types: u32,
-    ) -> Self {
-        Self {
-            mac,
-            status,
-            max_virtqueue_pairs,
-            mtu,
-            speed,
-            duplex,
-            rss_max_key_size,
-            rss_max_indirection_table_length,
-            supported_hash_types,
-        }
-    }
-
-    fn to_bytes(&self, length: usize) -> Vec<u8> {
-        let mut bytes = self.mac.to_vec();
-        bytes.extend(self.status.to_le_bytes());
-        bytes.extend(self.max_virtqueue_pairs.to_le_bytes());
-        bytes.extend(self.mtu.to_le_bytes());
-        bytes.extend(self.speed.to_le_bytes());
-        bytes.extend(self.duplex.to_le_bytes());
-        bytes.extend(self.rss_max_key_size.to_le_bytes());
-        bytes.extend(self.rss_max_indirection_table_length.to_le_bytes());
-        bytes.extend(self.supported_hash_types.to_le_bytes());
-        bytes.resize(length, 0);
-        bytes
-    }
-}
-
-struct PacketDesc {
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct VirtioNetHdr {
     flags: u8,
-    segmentation_offload: u8,
-    desc_length: u16,
-    segment_length: u16,
-    checksum_start: u16,
-    checksum_offset: u16,
-    buffer_count: u16,
+    gso_type: u8,
+    hdr_len: u16,
+    gso_size: u16,
+    csum_start: u16,
+    csum_offset: u16,
+    num_buffers: u16,
 }
 
-impl PacketDesc {
-    fn new(
-        flags: u8,
-        segmentation_offload: u8,
-        desc_length: u16,
-        segment_length: u16,
-        buffer_count: u16,
-        checksum_offset: u16,
-        checksum_start: u16,
-    ) -> Self {
+impl VirtioNetHdr {
+    fn new() -> Self {
         Self {
-            flags,
-            segmentation_offload,
-            desc_length,
-            segment_length,
-            buffer_count,
-            checksum_start,
-            checksum_offset,
+            flags: 0,
+            gso_type: 0,
+            hdr_len: 0,
+            gso_size: 0,
+            csum_start: 0,
+            csum_offset: 0,
+            num_buffers: 0,
         }
     }
 
-    fn _from_guest_mem(base_ptr: u64, guest_memory: &VirtioGuestMemoryHandle) -> Self {
-        Self {
-            flags: guest_memory.read_byte(base_ptr),
-            segmentation_offload: guest_memory.read_byte(base_ptr + 1),
-            desc_length: guest_memory.read_u16(base_ptr + 2),
-            segment_length: guest_memory.read_u16(base_ptr + 4),
-            checksum_start: guest_memory.read_u16(base_ptr + 6),
-            checksum_offset: guest_memory.read_u16(base_ptr + 8),
-            buffer_count: guest_memory.read_u16(base_ptr + 10),
-        }
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![self.flags];
-        bytes.push(self.segmentation_offload);
-        bytes.extend(self.desc_length.to_le_bytes());
-        bytes.extend(self.segment_length.to_le_bytes());
-        bytes.extend(self.checksum_start.to_le_bytes());
-        bytes.extend(self.checksum_offset.to_le_bytes());
-        bytes.extend(self.buffer_count.to_le_bytes());
-        bytes
+    fn as_bytes(&self) -> [u8; 12] {
+        let mut out = [0u8; 12];
+        out[0] = self.flags;
+        out[1] = self.gso_type;
+        out[2..4].copy_from_slice(&self.hdr_len.to_le_bytes());
+        out[4..6].copy_from_slice(&self.gso_size.to_le_bytes());
+        out[6..8].copy_from_slice(&self.csum_start.to_le_bytes());
+        out[8..10].copy_from_slice(&self.csum_offset.to_le_bytes());
+        out[10..12].copy_from_slice(&self.num_buffers.to_le_bytes());
+        out
     }
 }
 
 pub struct NetVirtio {
-    guest_memory: Option<VirtioGuestMemoryHandle>,
-    config: VirtioNetConfig,
-    tap: File,
+    mem: Option<VirtioGuestMemoryHandle>,
+    tap: std::fs::File,
+
+    // IMPORTANT: track link state explicitly
+    link_up: bool,
 }
 
 impl NetVirtio {
     pub fn new() -> Self {
-        let fd = OpenOptions::new()
+        let tap = OpenOptions::new()
             .read(true)
             .write(true)
-            .custom_flags(libc::O_NONBLOCK)
             .open("/dev/net/tun")
-            .expect("Failed to open /dev/net/tun");
+            .expect("failed to open /dev/net/tun");
 
-        let cname = CString::new("ferrum-tap0").unwrap();
-        let name_bytes = cname.as_bytes_with_nul();
-
-        let ret = Command::new("./target/debug/nethelper").status();
-        if ret.is_err() {
-            panic!(
-                "TUNSETIFF failed: {:?}\n",
-                ret.err().unwrap().raw_os_error().unwrap()
-            );
-        }
-
-        let req = libc::ifreq {
-            ifr_name: {
-                let mut name = [0i8; libc::IFNAMSIZ];
-                for (i, &b) in name_bytes.iter().enumerate() {
-                    name[i] = b as i8;
-                }
-                name
-            },
-            ifr_ifru: libc::__c_anonymous_ifr_ifru {
-                ifru_flags: (libc::IFF_UP | libc::IFF_RUNNING) as i16,
-            },
-        };
-        unsafe {
-            libc::ioctl(
-                libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0),
-                libc::SIOCSIFFLAGS,
-                &req as *const _ as *const libc::c_void,
-            );
-        }
+        let _ = Command::new("target/debug/nethelper").status();
 
         Self {
-            guest_memory: None,
-            config: VirtioNetConfig::new(
-                [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
-                1,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ),
-            tap: fd,
+            mem: None,
+            tap,
+            link_up: true,
         }
     }
 
-    fn tick_rx_queue(&mut self, queue: &mut VirtioQueue) -> bool {
-        let Some(guest_memory) = self.guest_memory.as_mut() else {
+    fn rx(&mut self, q: &mut VirtioQueue) -> bool {
+        let Some(mem) = self.mem.as_mut() else {
             return false;
         };
 
-        let mut did_work = false;
-        while let Some(head) = queue.pop_avail(guest_memory) {
-            let desc = queue.get_descriptor(guest_memory, head);
+        let mut did = false;
+        let mut buf = [0u8; 2048];
 
-            let packet_desc = if desc.flags & 1 != 0 {
-                queue.get_descriptor(guest_memory, desc.next)
-            } else {
-                desc
+        while let Some(head) = q.pop_avail(mem) {
+            let desc = q.get_descriptor(mem, head);
+
+            let n = match self.tap.read(&mut buf) {
+                Ok(n) => n,
+                Err(_) => break,
             };
 
-            let header = PacketDesc::new(0, 0, 0, 0, 1, 0, 0);
+            let hdr = VirtioNetHdr::new();
+            let hdr_bytes = hdr.as_bytes();
 
-            let mut frame = vec![0u8; packet_desc.len as usize - 12];
-            let n = match self.tap.read(&mut frame) {
-                Ok(n) => {
-                    did_work = true;
-                    n
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    queue.last_avail_idx = queue.last_avail_idx.wrapping_sub(1);
-                    break;
-                }
-                Err(_) => return false,
-            };
-            frame.truncate(n);
+            if (desc.len as usize) < n + hdr_bytes.len() {
+                continue;
+            }
 
-            guest_memory.write_guest_memory(packet_desc.addr, &header.to_bytes());
-            guest_memory.write_guest_memory(packet_desc.addr + 12, &frame);
+            mem.write_guest_memory(desc.addr, &hdr_bytes);
+            mem.write_guest_memory(desc.addr + hdr_bytes.len() as u64, &buf[..n]);
 
-            queue.push_used(guest_memory, head, 12 + frame.len() as u32);
+            q.push_used(mem, head, (hdr_bytes.len() + n) as u32);
+            did = true;
         }
-        did_work
+
+        did
     }
 
-    fn tick_tx_queue(&mut self, queue: &mut VirtioQueue) -> bool {
-        let Some(guest_memory) = self.guest_memory.as_mut() else {
+    fn tx(&mut self, q: &mut VirtioQueue) -> bool {
+        let Some(mem) = self.mem.as_mut() else {
             return false;
         };
 
-        let mut did_work = false;
-        while let Some(head) = queue.pop_avail(guest_memory) {
-            did_work = true;
-            let desc = queue.get_descriptor(&guest_memory, head);
+        let mut did = false;
+
+        while let Some(head) = q.pop_avail(mem) {
+            let mut desc = q.get_descriptor(mem, head);
 
             let mut packet = Vec::new();
-            let mut total_len = 0u32;
 
-            if desc.flags & 1 != 0 {
-                let mut current = desc.next;
-                let mut max_chain = 0u16;
-                loop {
-                    if max_chain > 32 {
-                        break;
-                    }
-                    max_chain += 1;
-                    let data_desc = queue.get_descriptor(&guest_memory, current);
-                    let mut buf = vec![0u8; data_desc.len as usize];
-                    guest_memory.read_guest_memory(data_desc.addr, &mut buf);
-                    packet.extend_from_slice(&buf);
-                    total_len += data_desc.len;
-                    if data_desc.flags & 1 == 0 {
-                        break;
-                    }
-                    current = data_desc.next;
+            loop {
+                let mut buf = vec![0u8; desc.len as usize];
+                mem.read_guest_memory(desc.addr, &mut buf);
+                packet.extend_from_slice(&buf);
+
+                if desc.flags & 1 == 0 {
+                    break;
                 }
-            } else {
-                if desc.len < 12 {
-                    let _ = self.tap.write_all(&[]);
-                    queue.push_used(guest_memory, head, desc.len);
-                    continue;
-                }
-                let frame_len = desc.len as usize - 12;
-                packet.resize(frame_len, 0);
-                guest_memory.read_guest_memory(desc.addr + 12, &mut packet);
-                total_len = desc.len;
-            };
+
+                desc = q.get_descriptor(mem, desc.next);
+            }
 
             let _ = self.tap.write_all(&packet);
-            queue.push_used(guest_memory, head, total_len);
+            q.push_used(mem, head, packet.len() as u32);
+
+            did = true;
         }
-        did_work
+
+        did
+    }
+
+    // -------------------------
+    // CRITICAL FIX:
+    // Pre-fill RX buffers like Linux expects
+    // -------------------------
+    fn fill_rx_queue(&mut self, q: &mut VirtioQueue) {
+        let Some(mem) = self.mem.as_mut() else { return };
+
+        for _ in 0..RX_QUEUE_FILL {
+            if let Some(head) = q.pop_avail(mem) {
+                // immediately return descriptor to used ring
+                q.push_used(mem, head, 0);
+            }
+        }
+    }
+
+    fn link_status(&self) -> u16 {
+        if self.link_up { 1 } else { 0 }
     }
 }
 
 impl VirtioDevice for NetVirtio {
     fn virtio_type(&self) -> u32 {
-        0x01
+        1
     }
 
     fn features(&self) -> u32 {
-        (1 << 0)  // VIRTIO_NET_F_CSUM
-        | (1 << 5)  // VIRTIO_NET_F_MAC
-        | (1 << 16) // VIRTIO_NET_F_STATUS
+        (1 << 0)  // CSUM
+        | (1 << 5)  // MAC
+        | (1 << 16) // STATUS
     }
 
-    fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
-        self.guest_memory = Some(guest_memory);
+    fn pass_guest_memory(&mut self, mem: VirtioGuestMemoryHandle) {
+        self.mem = Some(mem);
     }
 
-    fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
-        match queue_sel {
-            0 => self.tick_rx_queue(queue),
-            1 => self.tick_tx_queue(queue),
+    fn tick(&mut self, q: usize, queues: &mut VirtioQueue) -> bool {
+        match q {
+            0 => {
+                self.fill_rx_queue(queues); // 🔥 IMPORTANT for Linux init
+                self.rx(queues)
+            }
+            1 => self.tx(queues),
             _ => false,
         }
     }
 
-    fn read_config(&self, length: usize) -> Vec<u8> {
-        self.config.to_bytes(length)
+    fn read_config(&self, _len: usize) -> Vec<u8> {
+        // minimal config: MAC + status
+        let mut cfg = vec![0u8; 18];
+
+        cfg[0..6].copy_from_slice(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x56]);
+        cfg[16..18].copy_from_slice(&self.link_status().to_le_bytes());
+
+        cfg
     }
 
-    fn write_config(&mut self, offset: usize, data: &[u8]) {
-        if offset < 6 {
-            let end = (offset + data.len()).min(6);
-            for (i, &byte) in data.iter().enumerate().take(end - offset) {
-                self.config.mac[offset + i] = byte;
-            }
-        }
-    }
+    fn write_config(&mut self, _offset: usize, _data: &[u8]) {}
 
-    fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
-        let queue = &mut queues[0];
-        self.tick_rx_queue(queue)
+    fn update(&mut self, _queues: &mut [VirtioQueue]) -> bool {
+        false
     }
 }
