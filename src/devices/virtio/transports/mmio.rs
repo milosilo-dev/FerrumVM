@@ -87,7 +87,7 @@ impl MMIODevice for MMIOTransport {
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
             0x070 => self.status,
-              0x060 => self.interrupt_status,
+            0x060 => self.interrupt_status,
             _ => 0,
         } as u64)
             .to_le_bytes();
@@ -101,8 +101,7 @@ impl MMIODevice for MMIOTransport {
             0x020 => {
                 let val = read_u32_from_data(data) as u64;
                 if self.driver_features_sel == 0 {
-                    self.driver_features =
-                        (self.driver_features & 0xFFFFFFFF00000000) | val;
+                    self.driver_features = (self.driver_features & 0xFFFFFFFF00000000) | val;
                 } else {
                     self.driver_features =
                         (self.driver_features & 0x00000000FFFFFFFF) | (val << 32);
@@ -126,27 +125,23 @@ impl MMIODevice for MMIOTransport {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
             }
-              0x050 => {
+            0x050 => {
                 let queue_idx = read_u32_from_data(data) as usize;
 
                 if queue_idx < self.queues.len() && self.queues[queue_idx].ready {
-                    let was_pending = self.interrupt_status != 0;
-                    let did_work = self.device.as_mut().tick(queue_idx, &mut self.queues[queue_idx]);
+                    let did_work = self
+                        .device
+                        .as_mut()
+                        .tick(queue_idx, &mut self.queues[queue_idx]);
                     if did_work {
                         self.interrupt_status |= 1;
-                    }
-                    let now_pending = self.interrupt_status != 0;
-                    if now_pending && !was_pending {
                         if let Some(ref vm_fd) = self.vm_fd {
-                            match vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true) {
-                                Ok(_) => eprintln!("[dbg] IRQ{} raise OK", self.irq_sel),
-                                Err(e) => eprintln!("[dbg] IRQ{} RAISE FAILED: {:?}", self.irq_sel, e),
-                            }
+                            let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
                         }
                     }
                 }
             }
-              0x060 | 0x064 => {
+            0x060 | 0x064 => {
                 let ack = read_u32_from_data(data);
                 self.interrupt_status &= !ack;
                 if self.interrupt_status == 0 {
@@ -165,32 +160,32 @@ impl MMIODevice for MMIOTransport {
                 }
                 self.status = val;
             }
-             0x080 => {
+            0x080 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0xFFFFFFFF00000000) | val;
             }
-             0x084 => {
+            0x084 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].desc_addr =
                     (self.queues[self.queue_sel].desc_addr & 0x00000000FFFFFFFF) | (val << 32);
             }
-             0x090 => {
+            0x090 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0xFFFFFFFF00000000) | val;
             }
-             0x094 => {
+            0x094 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].avail_addr =
                     (self.queues[self.queue_sel].avail_addr & 0x00000000FFFFFFFF) | (val << 32);
             }
-             0x0A0 => {
+            0x0A0 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0xFFFFFFFF00000000) | val;
             }
-             0x0A4 => {
+            0x0A4 => {
                 let val = read_u32_from_data(data) as u64;
                 self.queues[self.queue_sel].used_addr =
                     (self.queues[self.queue_sel].used_addr & 0x00000000FFFFFFFF) | (val << 32);
@@ -230,7 +225,7 @@ impl MMIODevice for MMIOTransport {
             self.interrupt_status |= 1;
         }
 
-            let now_pending = self.interrupt_status != 0;
+        let now_pending = self.interrupt_status != 0;
         if now_pending && !was_pending {
             if let Some(ref vm_fd) = self.vm_fd {
                 let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);

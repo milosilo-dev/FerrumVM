@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
+use std::process::Command;
 
 struct VirtioNetConfig {
     mac: [u8; 6],
@@ -127,22 +127,15 @@ impl NetVirtio {
             .open("/dev/net/tun")
             .expect("Failed to open /dev/net/tun");
 
-        let mut ifr = [0u8; 64];
         let cname = CString::new("ferrum-tap0").unwrap();
         let name_bytes = cname.as_bytes_with_nul();
-        ifr[..name_bytes.len()].copy_from_slice(name_bytes);
-        let flags = (libc::IFF_TAP | libc::IFF_NO_PI) as u16;
-        ifr[16..18].copy_from_slice(&flags.to_le_bytes());
 
-        let ret = unsafe {
-            libc::ioctl(
-                fd.as_raw_fd(),
-                libc::TUNSETIFF,
-                &ifr as *const _ as *const libc::c_void,
-            )
-        };
-        if ret < 0 {
-            eprint!("TUNSETIFF failed: {}\n", std::io::Error::last_os_error());
+        let ret = Command::new("./target/debug/nethelper").status();
+        if ret.is_err() {
+            panic!(
+                "TUNSETIFF failed: {:?}\n",
+                ret.err().unwrap().raw_os_error().unwrap()
+            );
         }
 
         let req = libc::ifreq {
@@ -229,7 +222,6 @@ impl NetVirtio {
         let mut did_work = false;
         while let Some(head) = queue.pop_avail(guest_memory) {
             did_work = true;
-            eprintln!("[dbg] TX pop head={} used_addr=0x{:x}", head, queue.used_addr);
             let desc = queue.get_descriptor(&guest_memory, head);
 
             let mut packet = Vec::new();

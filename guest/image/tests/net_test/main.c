@@ -148,7 +148,7 @@ int virtio_net_init(void){
         | VIRTIO_STATUS_DRIVER
         | VIRTIO_STATUS_FEATURES_OK
         | VIRTIO_STATUS_DRIVER_OK);
-    
+
     virtio_net_config = *(VirtioNetConfig*)(VIRTIO_NET_BASE + 0x100);
     return 0;
 }
@@ -458,6 +458,8 @@ static int test_tx_triple_chain(void) {
     return 0;
 }
 
+#include "watchdog.c"
+
 // Entry
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
     int failures = 0;
@@ -479,6 +481,11 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE* handle, EFI_SYSTEM_TABLE* st) {
     failures += test_tx_no_kick();
     failures += test_tx_chained();
     failures += test_tx_triple_chain();
+    print("--- TX watchdog repro tests ---\n");
+    failures += (test_tx_watchdog_flood(2) < 0);
+    failures += (test_tx_watchdog_flood(4) < 0);
+    failures += (test_tx_watchdog_double_flood(1) < 0);
+    failures += (test_tx_watchdog_wrap() < 0);
 
     // ---- RX test ----
     uint8_t rx_buf[128];

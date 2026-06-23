@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::sync::atomic::{fence, Ordering};
+use std::sync::atomic::{Ordering, fence};
 
 use crate::memory_region::GuestMemoryHandle;
 
@@ -213,11 +213,6 @@ impl VirtioQueue {
             return None;
         }
 
-        if entries_available > self.size {
-            self.last_avail_idx = avail_idx;
-            return None;
-        }
-
         let ring_offset = 4 + (self.last_avail_idx % self.size) as u64 * 2;
         let head = mem.read_u16(self.avail_addr + ring_offset);
 
@@ -246,7 +241,12 @@ impl VirtioQueue {
         fence(Ordering::SeqCst);
 
         let verify = mem.read_u16(self.used_addr + 2);
-        debug_assert!(verify == new_idx, "push_used verify FAILED: wrote {} read back {}", new_idx, verify);
+        debug_assert!(
+            verify == new_idx,
+            "push_used verify FAILED: wrote {} read back {}",
+            new_idx,
+            verify
+        );
         self.last_written_used_idx.set(new_idx);
     }
 
@@ -271,8 +271,8 @@ impl VirtioQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
     use crate::memory_region::MemoryRegion;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_push_used_updates_guest_memory() {
@@ -305,7 +305,11 @@ mod tests {
 
         let idx = vmem.read_u16(used_addr + 2);
         assert_eq!(idx, 1, "used idx should be 1 after first push");
-        assert_eq!(queue.last_written_used_idx.get(), 1, "Cell tracking should match");
+        assert_eq!(
+            queue.last_written_used_idx.get(),
+            1,
+            "Cell tracking should match"
+        );
 
         let entry_id = vmem.read_u32(used_addr + 4);
         let entry_len = vmem.read_u32(used_addr + 8);
@@ -316,7 +320,11 @@ mod tests {
 
         let idx = vmem.read_u16(used_addr + 2);
         assert_eq!(idx, 2, "used idx should be 2 after second push");
-        assert_eq!(queue.last_written_used_idx.get(), 2, "Cell tracking should match");
+        assert_eq!(
+            queue.last_written_used_idx.get(),
+            2,
+            "Cell tracking should match"
+        );
 
         let entry_id = vmem.read_u32(used_addr + 4 + 8);
         let entry_len = vmem.read_u32(used_addr + 4 + 8 + 4);

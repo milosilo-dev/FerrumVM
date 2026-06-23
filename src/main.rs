@@ -33,8 +33,8 @@ fn main() {
     let cmos = Box::new(Cmos::new());
     let pci = Box::new(PCI::new());
 
-    let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1, 5));
-    let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1, 5));
+    let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1, 0));
+    let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1, 0));
     let blk = Box::new(MMIOTransport::new(
         Box::new(BlkVirtio::new("guest/image/disk.img")),
         1,
