@@ -210,23 +210,24 @@ impl MMIODevice for MMIOTransport {
             return;
         }
 
-        let was_pending = self.interrupt_status != 0;
+        let mut any_work = false;
 
         for (idx, queue) in &mut self.queues.iter_mut().enumerate() {
             if queue.ready {
                 let completions = self.device.as_mut().tick(idx, queue);
                 if completions {
+                    any_work = true;
                     self.interrupt_status |= 1;
                 }
             }
         }
 
         if self.device.update(self.queues.as_mut_slice()) {
+            any_work = true;
             self.interrupt_status |= 1;
         }
 
-        let now_pending = self.interrupt_status != 0;
-        if now_pending && !was_pending {
+        if any_work {
             if let Some(ref vm_fd) = self.vm_fd {
                 let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, true);
             }
