@@ -1,11 +1,9 @@
-use crate::devices::virtio::virtio::{
-    VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue,
-};
+use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
+use libc;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::os::fd::AsRawFd;
 use std::mem;
-use libc;
+use std::os::fd::AsRawFd;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -70,9 +68,6 @@ impl NetVirtio {
             ifr.ifr_ifru.ifru_flags = (libc::IFF_TAP | libc::IFF_NO_PI) as i16;
 
             let res = libc::ioctl(tap.as_raw_fd(), libc::TUNSETIFF, &ifr);
-            if res < 0 {
-                panic!("TUNSETIFF failed: {}", std::io::Error::last_os_error());
-            }
 
             // set non-blocking so rx() never blocks the VMM thread
             let flags = libc::fcntl(tap.as_raw_fd(), libc::F_GETFL, 0);
@@ -90,7 +85,9 @@ impl NetVirtio {
     // RX: TAP → GUEST
     // -------------------------
     fn rx(&mut self, q: &mut VirtioQueue) -> bool {
-        let Some(mem) = self.mem.as_mut() else { return false };
+        let Some(mem) = self.mem.as_mut() else {
+            return false;
+        };
 
         // only consume descriptors when data is available
         let mut pollfd = libc::pollfd {
@@ -139,7 +136,9 @@ impl NetVirtio {
     // TX: GUEST → TAP
     // -------------------------
     fn tx(&mut self, q: &mut VirtioQueue) -> bool {
-        let Some(mem) = self.mem.as_mut() else { return false };
+        let Some(mem) = self.mem.as_mut() else {
+            return false;
+        };
         let mut did = false;
 
         while let Some(head) = q.pop_avail(mem) {
@@ -186,7 +185,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u32 {
-        (1 << 5)  // MAC
+        (1 << 5) // MAC
     }
 
     fn pass_guest_memory(&mut self, mem: VirtioGuestMemoryHandle) {
