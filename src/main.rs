@@ -8,7 +8,7 @@ use ferrumvm::{
         serial::{Serial, SerialMode},
         timer::Pit,
         virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
+            devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio},
             transports::mmio::MMIOTransport,
         },
     },
@@ -40,7 +40,6 @@ fn main() {
         1,
         5,
     ));
-    let net = Box::new(MMIOTransport::new(Box::new(NetVirtio::new()), 2, 6));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
@@ -66,7 +65,6 @@ fn main() {
             MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
             MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
             MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
-            MMIODeviceRegion::new(0x20003000..=0x20003FFF, net),
             MMIODeviceRegion::new(0xE0000000..=0xE1000000, pci),
         ],
         irq_map: IrqMap::default_map(),
