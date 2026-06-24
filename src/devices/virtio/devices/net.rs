@@ -73,6 +73,10 @@ impl NetVirtio {
             if res < 0 {
                 panic!("TUNSETIFF failed: {}", std::io::Error::last_os_error());
             }
+
+            // set non-blocking so rx() never blocks the VMM thread
+            let flags = libc::fcntl(tap.as_raw_fd(), libc::F_GETFL, 0);
+            libc::fcntl(tap.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK);
         }
 
         Self {
@@ -87,13 +91,25 @@ impl NetVirtio {
     // -------------------------
     fn rx(&mut self, q: &mut VirtioQueue) -> bool {
         let Some(mem) = self.mem.as_mut() else { return false };
+
+        // only consume descriptors when data is available
+        let mut pollfd = libc::pollfd {
+            fd: self.tap.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let ret = unsafe { libc::poll(&mut pollfd, 1, 0) };
+        if ret <= 0 || pollfd.revents & libc::POLLIN == 0 {
+            return false;
+        }
+
         let mut did = false;
         let mut buf = [0u8; 2048];
 
         while let Some(head) = q.pop_avail(mem) {
             let n = match self.tap.read(&mut buf) {
-                Ok(n) if n > 0 => n,
-                _ => break,
+                Ok(n) => n,
+                Err(_) => break,
             };
 
             let hdr = VirtioNetHdr::new();
@@ -170,8 +186,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u32 {
-        (1 << 0)  // CSUM
-        | (1 << 5)  // MAC
+        (1 << 5)  // MAC
     }
 
     fn pass_guest_memory(&mut self, mem: VirtioGuestMemoryHandle) {
