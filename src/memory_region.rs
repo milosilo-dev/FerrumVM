@@ -4,7 +4,7 @@ use std::{
 };
 
 pub struct MemoryRegion {
-    ptr: *mut u8,
+    pub ptr: *mut u8,
     pub mem_size: usize,
     pub mem_offset: u64,
 }

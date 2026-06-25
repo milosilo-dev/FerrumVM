@@ -1,6 +1,7 @@
 use std::sync::atomic::{Ordering, fence};
+use std::sync::{Arc, Mutex};
 
-use crate::memory_region::GuestMemoryHandle;
+use crate::memory_region::{GuestMemoryHandle, MemoryRegion};
 
 pub trait VirtioDevice {
     fn virtio_type(&self) -> u32;
@@ -19,6 +20,10 @@ pub struct VirtioGuestMemoryHandle {
 impl VirtioGuestMemoryHandle {
     pub fn new(mem: GuestMemoryHandle) -> Self {
         Self { mem }
+    }
+
+    pub fn memory_regions(&self) -> Arc<Mutex<Vec<MemoryRegion>>> {
+        self.mem.clone()
     }
 
     pub fn read_byte(&self, addr: u64) -> u8 {
