@@ -10,6 +10,62 @@ const VIRTIO_NET_HDR_SIZE: usize = 12;
 
 const MAC_ADDRESS: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
 
+const VIRTIO_NET_F_MAC: u32 = 1 << 5;
+const VIRTIO_NET_F_STATUS: u32 = 1 << 16;
+
+const VIRTIO_NET_S_LINK_UP: u16 = 1;
+
+/// Holds a copy of all VirtioQueue fields so we can reconstruct a temporary
+/// queue for piggyback processing.  Only the indices are ever written back
+/// to the real queue (sync_indices_to) — the addresses belong to the MMIO
+/// transport and must never be overwritten.
+#[derive(Clone, Copy)]
+struct VirtioQueueSnapshot {
+    desc_addr: u64,
+    avail_addr: u64,
+    used_addr: u64,
+    size: u16,
+    ready: bool,
+    last_avail_idx: u16,
+    last_used_idx: u16,
+}
+
+impl VirtioQueueSnapshot {
+    fn from(q: &VirtioQueue) -> Self {
+        Self {
+            desc_addr: q.desc_addr,
+            avail_addr: q.avail_addr,
+            used_addr: q.used_addr,
+            size: q.size,
+            ready: q.ready,
+            last_avail_idx: q.last_avail_idx,
+            last_used_idx: q.last_used_idx,
+        }
+    }
+
+    /// Overwrite only the indices on `q` so that already-consumed entries are
+    /// not processed again.  Do NOT touch the addresses – those are owned by
+    /// the MMIO transport.
+    fn sync_indices_to(&self, q: &mut VirtioQueue) {
+        q.last_avail_idx = self.last_avail_idx;
+        q.last_used_idx = self.last_used_idx;
+    }
+
+    /// Build a full VirtioQueue from the snapshot (addresses + indices) for
+    /// use as a temporary when piggybacking RX on a TX kick.
+    fn to_queue(&self) -> VirtioQueue {
+        VirtioQueue {
+            desc_addr: self.desc_addr,
+            avail_addr: self.avail_addr,
+            used_addr: self.used_addr,
+            size: self.size,
+            ready: self.ready,
+            last_avail_idx: self.last_avail_idx,
+            last_used_idx: self.last_used_idx,
+        }
+    }
+}
+
 pub struct VirtioNetConfig {
     mac: [u8; 6],
     status: u16,
@@ -33,6 +89,8 @@ pub struct NetVirtio {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     tap: File,
     config: VirtioNetConfig,
+    /// Per-queue snapshots so we can piggyback RX processing on TX kicks.
+    snapshots: [VirtioQueueSnapshot; 2],
 }
 
 impl NetVirtio {
@@ -43,10 +101,19 @@ impl NetVirtio {
             tap,
             config: VirtioNetConfig {
                 mac: MAC_ADDRESS,
-                status: 0,
+                status: VIRTIO_NET_S_LINK_UP,
                 max_virtqueue_pairs: 1,
                 mtu: 1500,
             },
+            snapshots: [VirtioQueueSnapshot {
+                desc_addr: 0,
+                avail_addr: 0,
+                used_addr: 0,
+                size: 0,
+                ready: false,
+                last_avail_idx: 0,
+                last_used_idx: 0,
+            }; 2],
         }
     }
 
@@ -172,7 +239,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u32 {
-        0
+        VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS
     }
 
     fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
@@ -181,8 +248,43 @@ impl VirtioDevice for NetVirtio {
 
     fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
         match queue_sel {
-            0 => self.process_rx(queue),
-            1 => self.process_tx(queue),
+            1 => {
+                // Save a full snapshot (addresses + indices) of the RX queue
+                // so it can be reconstructed for piggyback processing later.
+                self.snapshots[0] = VirtioQueueSnapshot::from(queue);
+
+                let did_work = self.process_rx(queue);
+
+                // Persist the updated indices back into the snapshot.
+                self.snapshots[0].last_avail_idx = queue.last_avail_idx;
+                self.snapshots[0].last_used_idx = queue.last_used_idx;
+
+                did_work
+            }
+            0 => {
+                // Sync our TX indices so we don't re-process old entries.
+                self.snapshots[1].sync_indices_to(queue);
+
+                let tx_work = self.process_tx(queue);
+
+                self.snapshots[1].last_avail_idx = queue.last_avail_idx;
+                self.snapshots[1].last_used_idx = queue.last_used_idx;
+
+                // Piggyback: process RX immediately so the guest gets
+                // responses (e.g. ARP replies, DHCP offers) without
+                // waiting for the next periodic tick().
+                let rx_work = if self.snapshots[0].ready {
+                    let mut rx = self.snapshots[0].to_queue();
+                    let did_rx = self.process_rx(&mut rx);
+                    self.snapshots[0].last_avail_idx = rx.last_avail_idx;
+                    self.snapshots[0].last_used_idx = rx.last_used_idx;
+                    did_rx
+                } else {
+                    false
+                };
+
+                tx_work || rx_work
+            }
             _ => false,
         }
     }
@@ -192,10 +294,26 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
-        if !queues.is_empty() && queues[0].ready {
-            self.process_rx(&mut queues[0])
-        } else {
-            false
+        let mut did_work = false;
+
+        if queues.len() > 0 && queues[0].ready {
+            self.snapshots[0].sync_indices_to(&mut queues[0]);
+            if self.process_rx(&mut queues[0]) {
+                did_work = true;
+            }
+            self.snapshots[0].last_avail_idx = queues[0].last_avail_idx;
+            self.snapshots[0].last_used_idx = queues[0].last_used_idx;
         }
+
+        if queues.len() > 1 && queues[1].ready {
+            self.snapshots[1].sync_indices_to(&mut queues[1]);
+            if self.process_tx(&mut queues[1]) {
+                did_work = true;
+            }
+            self.snapshots[1].last_avail_idx = queues[1].last_avail_idx;
+            self.snapshots[1].last_used_idx = queues[1].last_used_idx;
+        }
+
+        did_work
     }
 }
