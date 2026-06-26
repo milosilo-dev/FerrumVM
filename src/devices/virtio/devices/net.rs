@@ -249,13 +249,6 @@ impl NetVirtio {
             return;
         }
 
-        eprintln!("net: configure_vhost: q0.ready={} size={} desc=0x{:x} avail=0x{:x} used=0x{:x}",
-            queues[0].ready, queues[0].size,
-            queues[0].desc_addr, queues[0].avail_addr, queues[0].used_addr);
-        eprintln!("net: configure_vhost: q1.ready={} size={} desc=0x{:x} avail=0x{:x} used=0x{:x}",
-            queues[1].ready, queues[1].size,
-            queues[1].desc_addr, queues[1].avail_addr, queues[1].used_addr);
-
         // Memory table must be available.
         if self.mem_regions.is_some() {
             self.set_mem_table();
@@ -288,9 +281,6 @@ impl NetVirtio {
             let used_hva = self
                 .gpa_to_hva(queues[i].used_addr)
                 .expect("used_addr outside mapped regions");
-
-            eprintln!("net: vq{}: desc_hva=0x{:x} avail_hva=0x{:x} used_hva=0x{:x}",
-                i, desc_hva, avail_hva, used_hva);
 
             let addr = vhost_vring_addr {
                 index: idx,
@@ -369,7 +359,6 @@ impl NetVirtio {
             assert!(ret >= 0, "VHOST_NET_SET_BACKEND[{}] failed", i);
         }
 
-        eprintln!("net: vhost-net configured successfully");
         self.configured = true;
     }
 

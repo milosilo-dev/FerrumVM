@@ -86,8 +86,17 @@ impl MMIODevice for MMIOTransport {
             0x034 => QUEUE_NUM_MAX,
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
-            0x070 => self.status,
-            0x060 => self.interrupt_status,
+             0x070 => self.status,
+            0x060 => {
+                let val = self.interrupt_status;
+                if val != 0 {
+                    self.interrupt_status = 0;
+                    if let Some(ref vm_fd) = self.vm_fd {
+                        let _ = vm_fd.lock().unwrap().set_irq_line(self.irq_sel, false);
+                    }
+                }
+                val
+            }
             _ => 0,
         } as u64)
             .to_le_bytes();
