@@ -27,6 +27,9 @@ impl IrqMap {
 
     pub fn default_map() -> Vec<Self> {
         vec![
+            // Kernel uses virtual-wire mode (no IOAPIC) because no MADT table
+            // is injected.  All interrupts go through the legacy PIC (irqchip 0)
+            // via the local APIC's LINT0 (ExtINT).
             Self::new(0, 0, 0), // PIT timer
             Self::new(1, 1, 0), // Keyboard
             Self::new(3, 3, 0), // COM2 (serial)

@@ -2,10 +2,11 @@ use std::{
     fs::File,
     os::fd::{AsRawFd, FromRawFd},
     sync::{Arc, Mutex},
+    thread,
 };
 
 use crate::{
-    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
+    devices::virtio::virtio::{IrqCallback, VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
     memory_region::MemoryRegion,
 };
 
@@ -86,19 +87,46 @@ pub struct NetVirtio {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     mem_regions: Option<Arc<Mutex<Vec<MemoryRegion>>>>,
     kick_evt: [Option<File>; 2],
-    call_evt: [Option<File>; 2],
     configured: bool,
+    irq_cb: Option<IrqCallback>,
+    listener_handles: Vec<thread::JoinHandle<()>>,
+    /// Last-seen used-ring index for each queue, used as a polling fallback
+    /// to detect vhost-net completions even if the call-eventfd path stalls.
     last_used_idx: [u16; 2],
 }
 
 impl NetVirtio {
+    /// Open `/dev/vhost-net` and run the one-time initialisation ioctls
+    /// (SET_OWNER, SET_FEATURES) that must precede any vring setup.
+    fn open_and_init_vhost() -> File {
+        let vhost = Self::open_vhost();
+        unsafe {
+            let ret = libc::ioctl(vhost.as_raw_fd(), VHOST_SET_OWNER);
+            if ret < 0 {
+                panic!(
+                    "VHOST_SET_OWNER failed (errno: {})",
+                    *libc::__errno_location()
+                );
+            }
+        }
+        const VHOST_SET_FEATURES: libc::c_ulong = 0x4008_AF00;
+        let features: u64 = 1u64 << 32; // VIRTIO_F_VERSION_1
+        let ret = unsafe {
+            libc::ioctl(
+                vhost.as_raw_fd(),
+                VHOST_SET_FEATURES,
+                &features as *const _ as *const libc::c_void,
+            )
+        };
+        assert!(ret >= 0, "VHOST_SET_FEATURES failed (errno: {})", unsafe {
+            *libc::__errno_location()
+        });
+        vhost
+    }
+
     pub fn new(tap_name: &str) -> Self {
         let tap = Self::open_tap(tap_name);
-        let vhost = Self::open_vhost();
-
-        // Take ownership immediately.
-        let ret = unsafe { libc::ioctl(vhost.as_raw_fd(), VHOST_SET_OWNER) };
-        assert!(ret >= 0, "VHOST_SET_OWNER failed");
+        let vhost = Self::open_and_init_vhost();
 
         Self {
             vhost,
@@ -112,8 +140,9 @@ impl NetVirtio {
             guest_memory: None,
             mem_regions: None,
             kick_evt: [None, None],
-            call_evt: [None, None],
             configured: false,
+            irq_cb: None,
+            listener_handles: Vec::new(),
             last_used_idx: [0, 0],
         }
     }
@@ -141,9 +170,7 @@ impl NetVirtio {
         let flags = IFF_TAP | IFF_NO_PI | IFF_VNET_HDR;
         ifr[16..18].copy_from_slice(&flags.to_le_bytes());
 
-        let ret = unsafe {
-            libc::ioctl(fd, TUNSETIFF, &ifr as *const _ as *const libc::c_void)
-        };
+        let ret = unsafe { libc::ioctl(fd, TUNSETIFF, &ifr as *const _ as *const libc::c_void) };
         assert!(
             ret >= 0,
             "TUNSETIFF failed for '{}' (errno: {}, run scripts/enable_tap.sh first, \
@@ -151,6 +178,26 @@ impl NetVirtio {
             name,
             unsafe { *libc::__errno_location() },
         );
+
+        // Bump the send buffer so vhost-net's sendmsg doesn't hit
+        // EAGAIN on tun_alloc_skb (sk_wmem_alloc >= sk_sndbuf).
+        // Default is ~212KiB (net.core.wmem_default); max is usually 4MiB.
+        // NOTE: setsockopt(SO_SNDBUF) does not work on a TAP fd because
+        // the fd is a character device, not a socket.  Use TUNSETSNDBUF
+        // ioctl instead.
+        const TUNSETSNDBUF: libc::c_ulong = 0x4004_54D4;
+        let bufsize: libc::c_int = 4 * 1024 * 1024; // kernel doubles this
+        let ret = unsafe {
+            libc::ioctl(
+                fd,
+                TUNSETSNDBUF,
+                &bufsize as *const _ as *const libc::c_void,
+            )
+        };
+        if ret < 0 {
+            let errno = unsafe { *libc::__errno_location() };
+            eprintln!("TUNSETSNDBUF(4MiB) failed (errno: {})", errno);
+        }
 
         unsafe { File::from_raw_fd(fd) }
     }
@@ -170,8 +217,13 @@ impl NetVirtio {
         unsafe { File::from_raw_fd(fd) }
     }
 
-    fn make_eventfd() -> File {
-        let fd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK) };
+    /// `blocking = false` for the kick eventfd (we only ever write to it).
+    /// `blocking = true` for the call eventfd (the listener thread blocks
+    /// in `read()` until vhost-net signals it — no busy-polling, and no
+    /// dependency on the guest ever causing another vmexit).
+    fn make_eventfd(blocking: bool) -> File {
+        let flags = if blocking { 0 } else { libc::EFD_NONBLOCK };
+        let fd = unsafe { libc::eventfd(0, flags) };
         assert!(fd >= 0, "eventfd failed (errno: {})", unsafe {
             *libc::__errno_location()
         });
@@ -194,8 +246,9 @@ impl NetVirtio {
     }
 
     /// Write a 1 to the kick eventfd so the vhost worker thread wakes up and
-    /// processes the given virtqueue.
-    fn kick_vhost(_queue_idx: usize, evt: &Option<File>) {
+    /// processes the given virtqueue immediately rather than waiting for its
+    /// own internal polling interval.
+    fn kick_vhost(evt: &Option<File>) {
         if let Some(f) = evt {
             let val = 1u64;
             unsafe {
@@ -207,11 +260,15 @@ impl NetVirtio {
     // -- vhost setup -------------------------------------------------------
 
     /// Share the guest memory layout with the vhost kernel subsystem.
-    fn set_mem_table(&self) {
+    /// Returns `true` on success.
+    fn set_mem_table(&self) -> bool {
         let Some(ref regions) = self.mem_regions else {
-            return;
+            return false;
         };
-        let borrow = regions.lock().unwrap();
+        let borrow = match regions.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
         let nregions = borrow.len() as u32;
 
         let mut buf = Vec::new();
@@ -224,6 +281,7 @@ impl NetVirtio {
             buf.extend_from_slice(&(region.ptr as u64).to_le_bytes());
             buf.extend_from_slice(&0u64.to_le_bytes());
         }
+        drop(borrow);
 
         let ret = unsafe {
             libc::ioctl(
@@ -232,27 +290,32 @@ impl NetVirtio {
                 buf.as_ptr() as *const libc::c_void,
             )
         };
-        assert!(ret >= 0, "VHOST_SET_MEM_TABLE failed (errno: {})", unsafe {
-            *libc::__errno_location()
-        });
+        if ret < 0 {
+            let errno = unsafe { *libc::__errno_location() };
+            eprintln!("VHOST_SET_MEM_TABLE failed (errno: {})", errno);
+        }
+        ret >= 0
     }
 
-    /// Program all vrings on the vhost fd and attach the TAP backend.
-    /// Called once from `update()` when both queues are ready.
+    /// Program all vrings on the vhost fd, attach the TAP backend, and spawn
+    /// a completion-listener thread per queue. Called once from `update()`
+    /// when both queues are ready.
     fn configure_vhost(&mut self, queues: &mut [VirtioQueue]) {
         if self.configured || queues.len() < 2 {
             return;
         }
 
-        // Both queues must be ready before we configure.
         if !queues[0].ready || !queues[1].ready {
+            eprintln!("[vhost-ctrl] skipping: queues not both ready");
             return;
         }
 
-        // Memory table must be available.
-        if self.mem_regions.is_some() {
-            self.set_mem_table();
+        if self.mem_regions.is_some() && !self.set_mem_table() {
+            eprintln!("vhost-net: set_mem_table failed, skipping vhost setup");
+            return;
         }
+
+        let mut call_evts: [Option<File>; 2] = [None, None];
 
         for i in 0..2 {
             let idx = i as u32;
@@ -269,18 +332,33 @@ impl NetVirtio {
                     &state as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_SET_VRING_NUM[{}] failed", i);
+            if ret < 0 {
+                eprintln!("vhost-net: VHOST_SET_VRING_NUM[{}] failed", i);
+                return;
+            }
 
             // -- vring addr (GPA → HVA) --
-            let desc_hva = self
-                .gpa_to_hva(queues[i].desc_addr)
-                .expect("desc_addr outside mapped regions");
-            let avail_hva = self
-                .gpa_to_hva(queues[i].avail_addr)
-                .expect("avail_addr outside mapped regions");
-            let used_hva = self
-                .gpa_to_hva(queues[i].used_addr)
-                .expect("used_addr outside mapped regions");
+            let desc_hva = match self.gpa_to_hva(queues[i].desc_addr) {
+                Some(hva) => hva,
+                None => {
+                    eprintln!("vhost-net: desc_addr outside mapped regions");
+                    return;
+                }
+            };
+            let avail_hva = match self.gpa_to_hva(queues[i].avail_addr) {
+                Some(hva) => hva,
+                None => {
+                    eprintln!("vhost-net: avail_addr outside mapped regions");
+                    return;
+                }
+            };
+            let used_hva = match self.gpa_to_hva(queues[i].used_addr) {
+                Some(hva) => hva,
+                None => {
+                    eprintln!("vhost-net: used_addr outside mapped regions");
+                    return;
+                }
+            };
 
             let addr = vhost_vring_addr {
                 index: idx,
@@ -297,7 +375,14 @@ impl NetVirtio {
                     &addr as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_SET_VRING_ADDR[{}] failed", i);
+            if ret < 0 {
+                let errno = unsafe { *libc::__errno_location() };
+                eprintln!(
+                    "vhost-net: VHOST_SET_VRING_ADDR[{}] failed (errno: {})",
+                    i, errno
+                );
+                return;
+            }
 
             // -- vring base (start indices = 0) --
             let base = vhost_vring_state { index: idx, num: 0 };
@@ -308,10 +393,13 @@ impl NetVirtio {
                     &base as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_SET_VRING_BASE[{}] failed", i);
+            if ret < 0 {
+                eprintln!("vhost-net: VHOST_SET_VRING_BASE[{}] failed", i);
+                return;
+            }
 
-            // -- kick eventfd (userspace→kernel) --
-            let kick = Self::make_eventfd();
+            // -- kick eventfd (userspace→kernel), nonblocking, we only write --
+            let kick = Self::make_eventfd(false);
             let file = vhost_vring_file {
                 index: idx,
                 fd: kick.as_raw_fd(),
@@ -323,11 +411,14 @@ impl NetVirtio {
                     &file as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_SET_VRING_KICK[{}] failed", i);
+            if ret < 0 {
+                eprintln!("vhost-net: VHOST_SET_VRING_KICK[{}] failed", i);
+                return;
+            }
             self.kick_evt[i] = Some(kick);
 
-            // -- call eventfd (kernel→userspace) --
-            let call = Self::make_eventfd();
+            // -- call eventfd (kernel→userspace), blocking, read by a thread --
+            let call = Self::make_eventfd(true);
             let file = vhost_vring_file {
                 index: idx,
                 fd: call.as_raw_fd(),
@@ -339,8 +430,11 @@ impl NetVirtio {
                     &file as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_SET_VRING_CALL[{}] failed", i);
-            self.call_evt[i] = Some(call);
+            if ret < 0 {
+                eprintln!("vhost-net: VHOST_SET_VRING_CALL[{}] failed", i);
+                return;
+            }
+            call_evts[i] = Some(call);
         }
 
         // Attach the TAP backend to both queues (0 = RX, 1 = TX).
@@ -356,45 +450,55 @@ impl NetVirtio {
                     &backend as *const _ as *const libc::c_void,
                 )
             };
-            assert!(ret >= 0, "VHOST_NET_SET_BACKEND[{}] failed", i);
+            if ret < 0 {
+                eprintln!("vhost-net: VHOST_NET_SET_BACKEND[{}] failed", i);
+                return;
+            }
+        }
+
+        // Spawn one blocking listener thread per queue. Each thread just
+        // blocks on read() of its call eventfd and, the instant vhost-net
+        // signals it, invokes the IRQ callback directly — completely
+        // decoupled from whether the VMM's main loop happens to re-poll
+        // this device. This is what was missing before: call_evt was
+        // created and registered with the kernel, but nothing ever read
+        // from it, so the completion signal was silently dropped.
+        for i in 0..2 {
+            let call_evt = call_evts[i].take().expect("call evt must be set");
+            let irq_cb = self.irq_cb.clone();
+
+            let handle = thread::Builder::new()
+                .name(format!("vhost-net-call-{}", i))
+                .spawn(move || {
+                    let mut buf = [0u8; 8];
+                    loop {
+                        let n = unsafe {
+                            libc::read(
+                                call_evt.as_raw_fd(),
+                                buf.as_mut_ptr() as *mut libc::c_void,
+                                8,
+                            )
+                        };
+                        if n < 0 {
+                            let errno = unsafe { *libc::__errno_location() };
+                            if errno == libc::EINTR {
+                                continue;
+                            }
+                            // fd closed/torn down — stop the thread.
+                            break;
+                        }
+
+                        if let Some(cb) = &irq_cb {
+                            cb();
+                        }
+                    }
+                })
+                .expect("failed to spawn vhost-net completion listener");
+
+            self.listener_handles.push(handle);
         }
 
         self.configured = true;
-    }
-
-    /// Drain call eventfd(s) and check the used ring index directly in guest
-    /// memory.  Returns true if vhost has completed new work since the last
-    /// time we checked.
-    fn check_completions(&mut self, queues: &[VirtioQueue]) -> bool {
-        let mut did_work = false;
-
-        for evt in &self.call_evt {
-            if let Some(f) = evt {
-                let mut buf = [0u8; 8];
-                let n = unsafe {
-                    libc::read(f.as_raw_fd(), buf.as_mut_ptr() as *mut libc::c_void, 8)
-                };
-                if n > 0 {
-                    did_work = true;
-                }
-            }
-        }
-
-        let Some(ref mem) = self.guest_memory else {
-            return did_work;
-        };
-
-        for (i, q) in queues.iter().enumerate().take(2) {
-            if q.ready && q.used_addr != 0 {
-                let used_idx = mem.read_u16(q.used_addr + 2);
-                if used_idx != self.last_used_idx[i] {
-                    self.last_used_idx[i] = used_idx;
-                    did_work = true;
-                }
-            }
-        }
-
-        did_work
     }
 }
 
@@ -412,15 +516,33 @@ impl VirtioDevice for NetVirtio {
         self.guest_memory = Some(guest_memory);
     }
 
+    fn set_irq_callback(&mut self, cb: IrqCallback) {
+        self.irq_cb = Some(cb);
+    }
+
     fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
-        if !self.configured {
+        if !self.configured || queue_sel > 1 {
             return false;
         }
 
-        Self::kick_vhost(queue_sel, &self.kick_evt[queue_sel]);
+        // Forward the guest's notification into the kernel so vhost-net
+        // processes the queue immediately.
+        Self::kick_vhost(&self.kick_evt[queue_sel]);
 
-        let queues = std::slice::from_ref(queue);
-        self.check_completions(queues)
+        // Poll the used ring as a fallback: even if the listener-thread /
+        // call-eventfd path stalls, the tick thread picks up completions
+        // within 100 us.
+        if let Some(ref mem) = self.guest_memory {
+            if queue.ready && queue.used_addr != 0 {
+                let used_idx = mem.read_u16(queue.used_addr + 2);
+                if used_idx != self.last_used_idx[queue_sel] {
+                    self.last_used_idx[queue_sel] = used_idx;
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn read_config(&self, length: usize) -> Vec<u8> {
@@ -429,6 +551,19 @@ impl VirtioDevice for NetVirtio {
 
     fn update(&mut self, queues: &mut [VirtioQueue]) -> bool {
         self.configure_vhost(queues);
-        self.check_completions(queues)
+        false
+    }
+
+    fn reset(&mut self) {
+        self.configured = false;
+        // Open a fresh vhost fd — the old one still points to the previous
+        // queue addresses and is effectively stale after a guest-driven reset.
+        self.vhost = Self::open_and_init_vhost();
+        self.kick_evt = [None, None];
+        self.last_used_idx = [0, 0];
+        // Old listener threads still block on the previous call eventfds but
+        // will never fire (no signals arrive on disconnected fds).  They are
+        // harmless background threads that will be cleaned up on process exit.
+        self.listener_handles.clear();
     }
 }

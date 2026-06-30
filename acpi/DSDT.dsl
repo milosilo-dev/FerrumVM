@@ -9,9 +9,9 @@
  *
  * Original Table Header:
  *     Signature        "DSDT"
- *     Length           0x000000CD (205)
+ *     Length           0x000000ED (237)
  *     Revision         0x02
- *     Checksum         0x75
+ *     Checksum         0x1F
  *     OEM ID           "FERRUM"
  *     OEM Table ID     "VM_DSDT"
  *     OEM Revision     0x00001000 (4096)
@@ -68,10 +68,12 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "VM_DSDT", 0x00001000)
                 }
             }
 
-            Device (NET){
-                Name (_UID, 0x04)
-                Name (_ADR, 0x3000)
-                Method (_STA, 0, NotSerialized){
+            Device (NET)
+            {
+                Name (_UID, 0x04)  // _UID: Unique ID
+                Name (_ADR, 0x3000)  // _ADR: Address
+                Method (_STA, 0, NotSerialized)  // _STA: Status
+                {
                     Return (0x0F)
                 }
             }

@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::memory_region::{GuestMemoryHandle, MemoryRegion};
 
+pub type IrqCallback = Arc<dyn Fn() + Send + Sync>;
+
 pub trait VirtioDevice {
     fn virtio_type(&self) -> u32;
     fn features(&self) -> u32;
@@ -11,10 +13,20 @@ pub trait VirtioDevice {
     fn read_config(&self, length: usize) -> Vec<u8>;
     fn write_config(&mut self, _offset: usize, _data: &[u8]) {}
     fn update(&mut self, queues: &mut [VirtioQueue]) -> bool;
+    fn set_irq_callback(&mut self, _cb: IrqCallback) {}
+    fn reset(&mut self) {}
 }
 
 pub struct VirtioGuestMemoryHandle {
     mem: GuestMemoryHandle,
+}
+
+impl Clone for VirtioGuestMemoryHandle {
+    fn clone(&self) -> Self {
+        Self {
+            mem: self.mem.clone(),
+        }
+    }
 }
 
 impl VirtioGuestMemoryHandle {
@@ -26,8 +38,12 @@ impl VirtioGuestMemoryHandle {
         self.mem.clone()
     }
 
+    fn lock_mem(&self) -> std::sync::MutexGuard<'_, Vec<MemoryRegion>> {
+        self.mem.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn read_byte(&self, addr: u64) -> u8 {
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -44,7 +60,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u16(&self, addr: u64) -> u16 {
         const LENGTH: u64 = 2;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -63,7 +79,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u32(&self, addr: u64) -> u32 {
         const LENGTH: u64 = 4;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -82,7 +98,7 @@ impl VirtioGuestMemoryHandle {
     pub fn read_u64(&self, addr: u64) -> u64 {
         const LENGTH: u64 = 8;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -101,7 +117,7 @@ impl VirtioGuestMemoryHandle {
     }
 
     pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>) {
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -118,7 +134,7 @@ impl VirtioGuestMemoryHandle {
     pub fn write_u8(&mut self, addr: u64, val: u8) {
         const LENGTH: u64 = 1;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -134,7 +150,7 @@ impl VirtioGuestMemoryHandle {
     pub fn write_u16(&mut self, addr: u64, val: u16) {
         const LENGTH: u64 = 2;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -150,7 +166,7 @@ impl VirtioGuestMemoryHandle {
     pub fn write_u32(&mut self, addr: u64, val: u32) {
         const LENGTH: u64 = 4;
 
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -160,11 +176,10 @@ impl VirtioGuestMemoryHandle {
                 return;
             }
         }
-        println!("Virtio wrote a addr outside of mapped scope!");
     }
 
     pub fn write_guest_memory(&mut self, addr: u64, data: &[u8]) {
-        let borrow = self.mem.lock().unwrap();
+        let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
             let end = mem_region.mem_offset + mem_region.mem_size as u64;
@@ -173,7 +188,6 @@ impl VirtioGuestMemoryHandle {
                 return;
             }
         }
-        println!("Virtio wrote a addr outside of mapped scope!");
     }
 }
 

@@ -15,11 +15,13 @@ typedef struct {
 #define VIRTQ_DESC_F_WRITE 2   // device writes to this buffer (not guest)
 
 // The available ring — guest writes here to give descriptors to device
+// NOTE: no used_event field — VIRTIO_F_EVENT_IDX is not negotiated,
+// and adding it changes the layout from 36 to 38 bytes, which misaligns
+// the used ring (must be 4-byte aligned per the virtio spec).
 typedef struct {
     uint16_t flags;
     uint16_t idx;               // next slot guest will write
     uint16_t ring[QUEUE_SIZE];  // descriptor indices
-    uint16_t used_event;
 } __attribute__((packed)) VirtqAvail;
 
 // One entry in the used ring
@@ -29,11 +31,11 @@ typedef struct {
 } __attribute__((packed)) VirtqUsedElem;
 
 // The used ring — device writes here when done
+// NOTE: no avail_event field — see comment above.
 typedef struct {
     uint16_t flags;
     uint16_t idx;                    // next slot device will write
     VirtqUsedElem ring[QUEUE_SIZE];
-    uint16_t avail_event;
 } __attribute__((packed)) VirtqUsed;
 
 // A complete virtqueue

@@ -86,7 +86,7 @@ impl MMIODevice for MMIOTransport {
             0x034 => QUEUE_NUM_MAX,
             0x038 => self.queues[self.queue_sel].size as u32,
             0x044 => self.queues[self.queue_sel].ready as u32,
-             0x070 => self.status,
+            0x070 => self.status,
             0x060 => {
                 let val = self.interrupt_status;
                 if val != 0 {

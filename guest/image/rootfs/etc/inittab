@@ -2,6 +2,12 @@
 
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
+
+# Bring up network and test TX (before ::wait so they actually run)
+::sysinit:/sbin/ip link set dev eth0 up 2>&1
+::sysinit:/sbin/ip addr add 10.0.2.15/24 dev eth0 2>&1
+::sysinit:/sbin/ping -c3 10.0.2.1
+
 ::wait:/sbin/openrc default
 
 # Set up a couple of getty's
