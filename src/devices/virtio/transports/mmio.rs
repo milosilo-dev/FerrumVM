@@ -37,6 +37,8 @@ pub struct MMIOTransport {
     vm_fd: Option<Arc<Mutex<VmFd>>>,
     irq_sel: u32,
     guest_memory: Option<VirtioGuestMemoryHandle>,
+
+    heartbeat_count: Option<u64>,
 }
 
 const VIRTIO_F_VERSION_1: u64 = 1 << 32;
@@ -55,6 +57,7 @@ impl MMIOTransport {
             vm_fd: None,
             irq_sel,
             guest_memory: None,
+            heartbeat_count: None,
         }
     }
 }
@@ -218,6 +221,14 @@ impl MMIODevice for MMIOTransport {
     fn tick(&mut self) {
         if self.status & 4 == 0 {
             return;
+        }
+
+        // Heartbeat: print every 1000th tick so we can see the tick thread
+        // is still alive even if the net device stalls.
+        let heartbeat_count = *self.heartbeat_count.get_or_insert(0);
+        *self.heartbeat_count.get_or_insert(0) += 1;
+        if heartbeat_count % 1000 == 0 {
+            eprintln!("mmio-tick: heartbeat #{} status={:#x}", heartbeat_count, self.status);
         }
 
         let was_pending = self.interrupt_status != 0;

@@ -1,4 +1,7 @@
-use std::fs::{self, File};
+use std::{
+    fs::{self, File},
+    os::fd::AsRawFd,
+};
 
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
@@ -21,6 +24,17 @@ use ferrumvm::{
 };
 
 fn main() {
+    // Redirect stderr (eprintln!) to ferrum-host.log so debug output doesn't
+    // get interleaved with the guest's serial console on stdout.
+    {
+        let host_log =
+            File::create("ferrum-host.log").expect("failed to create ferrum-host.log");
+        unsafe {
+            libc::dup2(host_log.as_raw_fd(), libc::STDERR_FILENO);
+        }
+        // host_log dropped here, but fd 2 (stderr) still points to the file.
+    }
+
     print!("\n\r");
     let firmware_log_file = File::create("ferrum-firmware.log").unwrap();
     let kernel_log_file = File::create("ferrum-kernel.log").unwrap();

@@ -94,6 +94,10 @@ pub struct NetVirtio {
     /// Last-seen used-ring index for each queue, used as a polling fallback
     /// to detect vhost-net completions even if the call-eventfd path stalls.
     last_used_idx: [u16; 2],
+    /// Tick counter for periodic debug logging (~1/second at 100us ticks).
+    debug_tick_count: u64,
+    /// Per-queue tick counter for debugging (increments only for queue_sel==1).
+    tx_tick_counter: u64,
     /// Features negotiated with the guest driver.
     driver_features: u64,
     /// Features supported by the vhost-net kernel backend.
@@ -135,7 +139,8 @@ impl NetVirtio {
         }
         // Set only VIRTIO_F_VERSION_1 as a baseline so the kernel allows
         // subsequent vring and backend ioctls.  The full guest-negotiated
-        // feature set is applied later in `negotiate_features()`.
+        // feature set is applied later in `configure_vhost()` via a second
+        // VHOST_SET_FEATURES call that includes the driver features.
         const VHOST_SET_FEATURES: libc::c_ulong = 0x4008_AF00;
         let baseline: u64 = 1u64 << 32;
         let ret = unsafe {
@@ -177,6 +182,8 @@ impl NetVirtio {
             driver_features: 0,
             vhost_features,
             setup_failed: false,
+            debug_tick_count: 0,
+            tx_tick_counter: 0,
         }
     }
 
@@ -281,12 +288,24 @@ impl NetVirtio {
     /// Write a 1 to the kick eventfd so the vhost worker thread wakes up and
     /// processes the given virtqueue immediately rather than waiting for its
     /// own internal polling interval.
-    fn kick_vhost(evt: &Option<File>) {
+    fn kick_vhost(evt: &Option<File>) -> bool {
         if let Some(f) = evt {
             let val = 1u64;
-            unsafe {
-                libc::write(f.as_raw_fd(), &val as *const _ as *const libc::c_void, 8);
+            let ret = unsafe {
+                libc::write(
+                    f.as_raw_fd(),
+                    &val as *const _ as *const libc::c_void,
+                    8,
+                )
+            };
+            if ret < 0 {
+                let errno = unsafe { *libc::__errno_location() };
+                eprintln!("net: kick_vhost write failed (errno: {})", errno);
+                return false;
             }
+            true
+        } else {
+            false
         }
     }
 
@@ -339,11 +358,39 @@ impl NetVirtio {
         }
 
         if !queues[0].ready || !queues[1].ready {
+            eprintln!(
+                "net: vhost waiting — q0.ready={} q1.ready={}",
+                queues[0].ready, queues[1].ready
+            );
             return;
         }
 
         if self.mem_regions.is_some() && !self.set_mem_table() {
             eprintln!("vhost-net: set_mem_table failed, skipping vhost setup");
+            self.setup_failed = true;
+            return;
+        }
+
+        // Propagate the guest-negotiated features to vhost-net, masked to
+        // only include bits the backend actually supports.  Without this,
+        // vhost-net only knows about VIRTIO_F_VERSION_1 and may reject or
+        // mis-handle TX buffers that reference unknown virtio features.
+        const VHOST_SET_FEATURES: libc::c_ulong = 0x4008_AF00;
+        let features = (1u64 << 32) | (self.driver_features & self.vhost_features);
+        eprintln!(
+            "net: driver_features={:#x} backend_features={:#x} combined={:#x}",
+            self.driver_features, self.vhost_features, features
+        );
+        let ret = unsafe {
+            libc::ioctl(
+                self.vhost.as_raw_fd(),
+                VHOST_SET_FEATURES,
+                &features as *const _ as *const libc::c_void,
+            )
+        };
+        if ret < 0 {
+            let errno = unsafe { *libc::__errno_location() };
+            eprintln!("vhost-net: VHOST_SET_FEATURES (final) failed (errno: {})", errno);
             self.setup_failed = true;
             return;
         }
@@ -541,6 +588,13 @@ impl NetVirtio {
             self.listener_handles.push(handle);
         }
 
+        let q0_hva = self.gpa_to_hva(queues[0].used_addr);
+        let q1_hva = self.gpa_to_hva(queues[1].used_addr);
+        println!(
+            "net: vhost configured — q0 used_gpa={:#x} used_hva={:#x?}  q1 used_gpa={:#x} used_hva={:#x?}",
+            queues[0].used_addr, q0_hva,
+            queues[1].used_addr, q1_hva,
+        );
         self.configured = true;
     }
 }
@@ -569,24 +623,72 @@ impl VirtioDevice for NetVirtio {
 
     fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool {
         if !self.configured || queue_sel > 1 {
+            eprintln!(
+                "net: tick SKIP q{} configured={}",
+                queue_sel, self.configured
+            );
             return false;
+        }
+
+        // Global tick counter (increments on every queue tick).
+        let tick_count = self.debug_tick_count;
+        self.debug_tick_count += 1;
+
+        // Per-TX-queue counter (increments only for TX).
+        let txc = self.tx_tick_counter;
+        if queue_sel == 1 {
+            self.tx_tick_counter += 1;
+        }
+
+        // Log every 500 ticks of the TX queue (~50ms at 100us tick interval).
+        if queue_sel == 1 && txc % 500 == 0 {
+            eprintln!("net: TX q1 tick #{} (global #{})", txc, tick_count);
         }
 
         // Forward the guest's notification into the kernel so vhost-net
         // processes the queue immediately.
-        Self::kick_vhost(&self.kick_evt[queue_sel]);
+        let kicked = Self::kick_vhost(&self.kick_evt[queue_sel]);
+        if !kicked && queue_sel == 1 {
+            eprintln!("net: TX kick FAILED (q{})", queue_sel);
+        }
 
-        // Poll the used ring as a fallback: even if the listener-thread /
-        // call-eventfd path stalls, the tick thread picks up completions
-        // within 100 us.
+        // Poll the used ring as a fallback.
+        let mut used_idx: Option<u16> = None;
         if let Some(ref mem) = self.guest_memory {
             if queue.ready && queue.used_addr != 0 {
-                let used_idx = mem.read_u16(queue.used_addr + 2);
-                if used_idx != self.last_used_idx[queue_sel] {
-                    self.last_used_idx[queue_sel] = used_idx;
-                    return true;
-                }
+                used_idx = Some(mem.read_u16(queue.used_addr + 2));
             }
+        }
+
+        if let Some(idx) = used_idx {
+            if idx != self.last_used_idx[queue_sel] {
+                eprintln!(
+                    "net: q{} used_idx advanced {} -> {}",
+                    queue_sel, self.last_used_idx[queue_sel], idx
+                );
+                self.last_used_idx[queue_sel] = idx;
+                return true;
+            }
+        }
+
+        // Debug: print avail + used ring state periodically (~every 2 sec for TX)
+        if queue_sel == 1 && txc % 20000 == 0 {
+            let avail_idx = self.guest_memory.as_ref().and_then(|mem| {
+                if queue.ready && queue.avail_addr != 0 {
+                    Some(mem.read_u16(queue.avail_addr + 2))
+                } else {
+                    None
+                }
+            }).unwrap_or(0);
+            eprintln!(
+                "net: [debug] q{} avail_addr={:#x} avail_idx={} used_addr={:#x} last_used={} used_idx={}",
+                queue_sel,
+                queue.avail_addr,
+                avail_idx,
+                queue.used_addr,
+                self.last_used_idx[queue_sel],
+                used_idx.unwrap_or(0)
+            );
         }
 
         false
