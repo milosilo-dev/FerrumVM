@@ -15,7 +15,7 @@ impl VirtioDevice for CntVirtio {
         0x10
     }
 
-    fn features(&self) -> u32 {
+    fn features(&self) -> u64 {
         0
     }
 

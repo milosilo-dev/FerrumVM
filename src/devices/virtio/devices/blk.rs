@@ -83,7 +83,7 @@ impl VirtioDevice for BlkVirtio {
         0x02
     }
 
-    fn features(&self) -> u32 {
+    fn features(&self) -> u64 {
         0
     }
 

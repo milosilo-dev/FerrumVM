@@ -21,13 +21,14 @@ const VHOST_SET_VRING_KICK: libc::c_ulong = 0x4008_AF20;
 const VHOST_SET_VRING_CALL: libc::c_ulong = 0x4008_AF21;
 const VHOST_NET_SET_BACKEND: libc::c_ulong = 0x4008_AF30;
 const VHOST_SET_MEM_TABLE: libc::c_ulong = 0x4008_AF03;
+const VHOST_GET_FEATURES: libc::c_ulong = 0x8008_AF00;
 
 // ---------------------------------------------------------------------------
 // Virtio-net constants
 // ---------------------------------------------------------------------------
 const MAC_ADDRESS: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
-const VIRTIO_NET_F_MAC: u32 = 1 << 5;
-const VIRTIO_NET_F_STATUS: u32 = 1 << 16;
+const VIRTIO_NET_F_MAC: u64 = 1 << 5;
+const VIRTIO_NET_F_STATUS: u64 = 1 << 16;
 const VIRTIO_NET_S_LINK_UP: u16 = 1;
 
 // ---------------------------------------------------------------------------
@@ -93,12 +94,21 @@ pub struct NetVirtio {
     /// Last-seen used-ring index for each queue, used as a polling fallback
     /// to detect vhost-net completions even if the call-eventfd path stalls.
     last_used_idx: [u16; 2],
+    /// Features negotiated with the guest driver.
+    driver_features: u64,
+    /// Features supported by the vhost-net kernel backend.
+    vhost_features: u64,
+    /// Set after a permanent vhost setup failure to suppress further retries.
+    setup_failed: bool,
 }
 
 impl NetVirtio {
-    /// Open `/dev/vhost-net` and run the one-time initialisation ioctls
-    /// (SET_OWNER, SET_FEATURES) that must precede any vring setup.
-    fn open_and_init_vhost() -> File {
+    /// Open `/dev/vhost-net`, claim ownership, and query vhost-net's
+    /// supported feature set.  A minimal baseline (VIRTIO_F_VERSION_1) is
+    /// negotiated upfront so the kernel accepts subsequent vring and backend
+    /// ioctls; the full feature set is negotiated later when the guest driver
+    /// writes its accepted features via `negotiate_features()`.
+    fn open_and_init_vhost() -> (File, u64) {
         let vhost = Self::open_vhost();
         unsafe {
             let ret = libc::ioctl(vhost.as_raw_fd(), VHOST_SET_OWNER);
@@ -109,24 +119,44 @@ impl NetVirtio {
                 );
             }
         }
+        let mut features: u64 = 0;
+        let ret = unsafe {
+            libc::ioctl(
+                vhost.as_raw_fd(),
+                VHOST_GET_FEATURES,
+                &mut features as *mut _ as *mut libc::c_void,
+            )
+        };
+        if ret < 0 {
+            panic!(
+                "VHOST_GET_FEATURES failed (errno: {})",
+                unsafe { *libc::__errno_location() }
+            );
+        }
+        // Set only VIRTIO_F_VERSION_1 as a baseline so the kernel allows
+        // subsequent vring and backend ioctls.  The full guest-negotiated
+        // feature set is applied later in `negotiate_features()`.
         const VHOST_SET_FEATURES: libc::c_ulong = 0x4008_AF00;
-        let features: u64 = 1u64 << 32; // VIRTIO_F_VERSION_1
+        let baseline: u64 = 1u64 << 32;
         let ret = unsafe {
             libc::ioctl(
                 vhost.as_raw_fd(),
                 VHOST_SET_FEATURES,
-                &features as *const _ as *const libc::c_void,
+                &baseline as *const _ as *const libc::c_void,
             )
         };
-        assert!(ret >= 0, "VHOST_SET_FEATURES failed (errno: {})", unsafe {
-            *libc::__errno_location()
-        });
-        vhost
+        if ret < 0 {
+            panic!(
+                "VHOST_SET_FEATURES failed (errno: {})",
+                unsafe { *libc::__errno_location() }
+            );
+        }
+        (vhost, features)
     }
 
     pub fn new(tap_name: &str) -> Self {
         let tap = Self::open_tap(tap_name);
-        let vhost = Self::open_and_init_vhost();
+        let (vhost, vhost_features) = Self::open_and_init_vhost();
 
         Self {
             vhost,
@@ -144,6 +174,9 @@ impl NetVirtio {
             irq_cb: None,
             listener_handles: Vec::new(),
             last_used_idx: [0, 0],
+            driver_features: 0,
+            vhost_features,
+            setup_failed: false,
         }
     }
 
@@ -301,22 +334,26 @@ impl NetVirtio {
     /// a completion-listener thread per queue. Called once from `update()`
     /// when both queues are ready.
     fn configure_vhost(&mut self, queues: &mut [VirtioQueue]) {
-        if self.configured || queues.len() < 2 {
+        if self.configured || self.setup_failed || queues.len() < 2 {
             return;
         }
 
         if !queues[0].ready || !queues[1].ready {
-            eprintln!("[vhost-ctrl] skipping: queues not both ready");
             return;
         }
 
         if self.mem_regions.is_some() && !self.set_mem_table() {
             eprintln!("vhost-net: set_mem_table failed, skipping vhost setup");
+            self.setup_failed = true;
             return;
         }
 
         let mut call_evts: [Option<File>; 2] = [None, None];
 
+        // Set up vrings AND attach the backend for each queue individually,
+        // before touching the next queue.  Some kernels seem to invalidate
+        // queue-0's state when queue-1's vring is configured, so attaching
+        // the backend early works around that.
         for i in 0..2 {
             let idx = i as u32;
 
@@ -334,6 +371,7 @@ impl NetVirtio {
             };
             if ret < 0 {
                 eprintln!("vhost-net: VHOST_SET_VRING_NUM[{}] failed", i);
+                self.setup_failed = true;
                 return;
             }
 
@@ -342,6 +380,7 @@ impl NetVirtio {
                 Some(hva) => hva,
                 None => {
                     eprintln!("vhost-net: desc_addr outside mapped regions");
+                    self.setup_failed = true;
                     return;
                 }
             };
@@ -349,6 +388,7 @@ impl NetVirtio {
                 Some(hva) => hva,
                 None => {
                     eprintln!("vhost-net: avail_addr outside mapped regions");
+                    self.setup_failed = true;
                     return;
                 }
             };
@@ -356,6 +396,7 @@ impl NetVirtio {
                 Some(hva) => hva,
                 None => {
                     eprintln!("vhost-net: used_addr outside mapped regions");
+                    self.setup_failed = true;
                     return;
                 }
             };
@@ -381,6 +422,7 @@ impl NetVirtio {
                     "vhost-net: VHOST_SET_VRING_ADDR[{}] failed (errno: {})",
                     i, errno
                 );
+                self.setup_failed = true;
                 return;
             }
 
@@ -395,6 +437,7 @@ impl NetVirtio {
             };
             if ret < 0 {
                 eprintln!("vhost-net: VHOST_SET_VRING_BASE[{}] failed", i);
+                self.setup_failed = true;
                 return;
             }
 
@@ -413,6 +456,7 @@ impl NetVirtio {
             };
             if ret < 0 {
                 eprintln!("vhost-net: VHOST_SET_VRING_KICK[{}] failed", i);
+                self.setup_failed = true;
                 return;
             }
             self.kick_evt[i] = Some(kick);
@@ -432,15 +476,16 @@ impl NetVirtio {
             };
             if ret < 0 {
                 eprintln!("vhost-net: VHOST_SET_VRING_CALL[{}] failed", i);
+                self.setup_failed = true;
                 return;
             }
             call_evts[i] = Some(call);
-        }
 
-        // Attach the TAP backend to both queues (0 = RX, 1 = TX).
-        for i in 0..2 {
+            // -- TAP backend (must be attached before moving on to the next
+            //    queue because some kernel versions invalidate the vring
+            //    state of queue-0 when queue-1 is configured).
             let backend = vhost_vring_file {
-                index: i as u32,
+                index: idx,
                 fd: self.tap.as_raw_fd(),
             };
             let ret = unsafe {
@@ -451,18 +496,16 @@ impl NetVirtio {
                 )
             };
             if ret < 0 {
-                eprintln!("vhost-net: VHOST_NET_SET_BACKEND[{}] failed", i);
+                let errno = unsafe { *libc::__errno_location() };
+                eprintln!(
+                    "vhost-net: VHOST_NET_SET_BACKEND[{}] failed (errno: {})",
+                    i, errno
+                );
+                self.setup_failed = true;
                 return;
             }
         }
 
-        // Spawn one blocking listener thread per queue. Each thread just
-        // blocks on read() of its call eventfd and, the instant vhost-net
-        // signals it, invokes the IRQ callback directly — completely
-        // decoupled from whether the VMM's main loop happens to re-poll
-        // this device. This is what was missing before: call_evt was
-        // created and registered with the kernel, but nothing ever read
-        // from it, so the completion signal was silently dropped.
         for i in 0..2 {
             let call_evt = call_evts[i].take().expect("call evt must be set");
             let irq_cb = self.irq_cb.clone();
@@ -507,8 +550,12 @@ impl VirtioDevice for NetVirtio {
         0x01
     }
 
-    fn features(&self) -> u32 {
+    fn features(&self) -> u64 {
         VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS
+    }
+
+    fn negotiate_features(&mut self, driver_features: u64) {
+        self.driver_features = driver_features;
     }
 
     fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
@@ -558,7 +605,11 @@ impl VirtioDevice for NetVirtio {
         self.configured = false;
         // Open a fresh vhost fd — the old one still points to the previous
         // queue addresses and is effectively stale after a guest-driven reset.
-        self.vhost = Self::open_and_init_vhost();
+        let (vhost, vhost_features) = Self::open_and_init_vhost();
+        self.vhost = vhost;
+        self.vhost_features = vhost_features;
+        self.driver_features = 0;
+        self.setup_failed = false;
         self.kick_evt = [None, None];
         self.last_used_idx = [0, 0];
         // Old listener threads still block on the previous call eventfds but

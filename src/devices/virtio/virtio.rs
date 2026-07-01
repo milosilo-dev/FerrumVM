@@ -7,7 +7,8 @@ pub type IrqCallback = Arc<dyn Fn() + Send + Sync>;
 
 pub trait VirtioDevice {
     fn virtio_type(&self) -> u32;
-    fn features(&self) -> u32;
+    fn features(&self) -> u64;
+    fn negotiate_features(&mut self, _driver_features: u64) {}
     fn pass_guest_memory(&mut self, _guest_memory: VirtioGuestMemoryHandle);
     fn tick(&mut self, queue_sel: usize, queue: &mut VirtioQueue) -> bool;
     fn read_config(&self, length: usize) -> Vec<u8>;

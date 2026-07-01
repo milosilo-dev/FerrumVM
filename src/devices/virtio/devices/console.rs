@@ -28,7 +28,7 @@ impl VirtioDevice for ConsoleVirtio {
         0x3
     }
 
-    fn features(&self) -> u32 {
+    fn features(&self) -> u64 {
         0x0
     }
 

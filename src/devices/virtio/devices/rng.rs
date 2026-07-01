@@ -21,7 +21,7 @@ impl VirtioDevice for RngVirtio {
         0x04
     }
 
-    fn features(&self) -> u32 {
+    fn features(&self) -> u64 {
         0
     }
 

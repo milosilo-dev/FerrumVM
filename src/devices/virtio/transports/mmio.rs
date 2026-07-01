@@ -76,7 +76,7 @@ impl MMIODevice for MMIOTransport {
             0x008 => self.device.virtio_type(),
             0x00C => VENDOR_ID,
             0x010 => {
-                let features = self.device.features() as u64 | VIRTIO_F_VERSION_1;
+                let features = self.device.features() | VIRTIO_F_VERSION_1;
                 if self.device_features_sel == 0 {
                     features as u32
                 } else {
@@ -115,6 +115,7 @@ impl MMIODevice for MMIOTransport {
                     self.driver_features =
                         (self.driver_features & 0x00000000FFFFFFFF) | (val << 32);
                 }
+                self.device.negotiate_features(self.driver_features);
             }
             0x024 => {
                 self.driver_features_sel = read_u32_from_data(data);
