@@ -9,6 +9,8 @@ guest/image/BOOTX64.EFI
 guest/image/efi_test/BOOTX64.EFI
 guest/image/limine_test/BOOTX64.EFI
 guest/image/initramfs/initramfs-linux.img
+guest/driver/Cargo.lock
+guest/driver/target
 acpi/*.hex
 acpi/*.aml
 ferrum-firmware.log
