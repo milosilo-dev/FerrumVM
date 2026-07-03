@@ -13,6 +13,10 @@ done
 cp ../driver/driver.ko rootfs/ferrum-driver.ko
 cp $1 BOOTX64.EFI
 
+mkdir -p rootfs/dev
+mkdir -p rootfs/proc
+mkdir -p rootfs/sys
+
 ./initramfs/make_initramfs.sh
 
 # 1. Create empty disk (64MB)
