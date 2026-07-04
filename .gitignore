@@ -10,6 +10,8 @@ guest/image/efi_test/BOOTX64.EFI
 guest/image/limine_test/BOOTX64.EFI
 guest/image/initramfs/initramfs-linux.img
 guest/image/tests/net_test/BOOTX64.EFI
+guest/image/rootfs/ferrum-driver.ko
+guest/image/test/*/*.EFI
 guest/driver/.driver.mod.cmd
 guest/driver/.driver.o.cmd
 guest/driver/.modules.order.cmd
