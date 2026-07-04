@@ -1,4 +1,4 @@
-KDIR ?= /lib/modules/7.0.14-zen1-1-zen/build
+KDIR ?= ~/Data/skhv_linux/
 PWD := $(shell pwd)
 
 all:
