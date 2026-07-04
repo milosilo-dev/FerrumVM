@@ -223,14 +223,6 @@ impl MMIODevice for MMIOTransport {
             return;
         }
 
-        // Heartbeat: print every 1000th tick so we can see the tick thread
-        // is still alive even if the net device stalls.
-        let heartbeat_count = *self.heartbeat_count.get_or_insert(0);
-        *self.heartbeat_count.get_or_insert(0) += 1;
-        if heartbeat_count % 1000 == 0 {
-            eprintln!("mmio-tick: heartbeat #{} status={:#x}", heartbeat_count, self.status);
-        }
-
         let was_pending = self.interrupt_status != 0;
 
         for (idx, queue) in &mut self.queues.iter_mut().enumerate() {
