@@ -37,8 +37,6 @@ pub struct MMIOTransport {
     vm_fd: Option<Arc<Mutex<VmFd>>>,
     irq_sel: u32,
     guest_memory: Option<VirtioGuestMemoryHandle>,
-
-    heartbeat_count: Option<u64>,
 }
 
 const VIRTIO_F_VERSION_1: u64 = 1 << 32;
@@ -57,7 +55,6 @@ impl MMIOTransport {
             vm_fd: None,
             irq_sel,
             guest_memory: None,
-            heartbeat_count: None,
         }
     }
 }

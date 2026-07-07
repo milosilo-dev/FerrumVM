@@ -13,7 +13,8 @@ pub fn create_tap(name: &str) -> std::fs::File {
     let fd = unsafe { libc::open(b"/dev/net/tun\0".as_ptr() as *const i8, libc::O_RDWR) };
 
     if fd < 0 {
-        panic!("failed to open /dev/net/tun");
+        let err = Error::last_os_error();
+        panic!("failed to open /dev/net/tun: {err} (errno={})", err.raw_os_error().unwrap_or(0));
     }
 
     let mut req: ifreq = unsafe { mem::zeroed() };
@@ -39,13 +40,8 @@ pub fn create_tap(name: &str) -> std::fs::File {
     let res = unsafe { libc::ioctl(fd, TUNSETIFF, &req) };
 
     if res < 0 {
-        let err = Error::from_raw_os_error(22);
-
-        // Retrieve the raw code
-        if let Some(code) = err.raw_os_error() {
-            panic!("TUNSETIFF failed: {}", code);
-        }
-        panic!("TUNSETIFF failed: [no-code]");
+        let err = Error::last_os_error();
+        panic!("TUNSETIFF failed: {err} (errno={})", err.raw_os_error().unwrap_or(0));
     }
 
     unsafe { std::fs::File::from_raw_fd(fd) }
