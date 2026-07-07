@@ -10,7 +10,7 @@ pub fn create_tap(name: &str) -> std::fs::File {
     use std::ffi::CString;
     use std::os::unix::io::FromRawFd;
 
-    let fd = unsafe { libc::open(b"/dev/net/tun\0".as_ptr() as *const i8, libc::O_RDWR) };
+    let fd = unsafe { libc::open(b"/dev/net/tun\0".as_ptr() as *const i8, libc::O_RDWR | libc::O_NONBLOCK) };
 
     if fd < 0 {
         let err = Error::last_os_error();

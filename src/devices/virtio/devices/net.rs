@@ -93,39 +93,41 @@ impl NetVirtio {
         };
 
         let mut work_done = false;
+        let mut frame_buf = [0u8; 65536];
 
-        while let Some(head) = queue.pop_avail(guest_memory) {
+        loop {
+            // Read from TAP first — non-blocking; only pop a descriptor when data is available
+            let n = match self.tap.read(&mut frame_buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => return work_done,
+            };
+
+            let Some(head) = queue.pop_avail(guest_memory) else {
+                break;
+            };
+
             let desc = queue.get_descriptor(guest_memory, head);
 
-            // Walk descriptor chain and find FIRST writable buffer (RX packet destination)
+            // Walk descriptor chain and find first writable buffer
             let mut write_desc = desc;
-
             while write_desc.flags & VIRTQ_DESC_F_WRITE == 0
                 && (write_desc.flags & VIRTQ_DESC_F_NEXT) != 0
             {
                 write_desc = queue.get_descriptor(guest_memory, write_desc.next);
             }
 
-            // Read packet from TAP
-            let mut frame = vec![0u8; write_desc.len as usize];
+            // Prepend 12-byte virtio_net_hdr_v1 (all zeros = no offload)
+            const HDR_LEN: usize = 12;
+            let total_len = (HDR_LEN + n).min(write_desc.len as usize);
+            let payload_len = total_len.saturating_sub(HDR_LEN);
 
-            let n = match self.tap.read(&mut frame) {
-                Ok(n) => n,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // No packet available: DO NOT complete descriptor
-                    // (important: avoids fake RX completions)
-                    queue.push_used(guest_memory, head, 0);
-                    continue;
-                }
-                Err(_) => return false,
-            };
+            let mut out = vec![0u8; HDR_LEN];
+            out.extend_from_slice(&frame_buf[..payload_len]);
 
-            frame.truncate(n);
-
-            // Write directly into guest buffer
-            guest_memory.write_guest_memory(write_desc.addr, &frame);
-
-            queue.push_used(guest_memory, head, n as u32);
+            guest_memory.write_guest_memory(write_desc.addr, &out);
+            queue.push_used(guest_memory, head, total_len as u32);
             work_done = true;
         }
 
