@@ -264,7 +264,7 @@ impl VirtioQueue {
     }
 
     // -------------------------
-    // USED RING (FIXED)
+    // USED RING
     // -------------------------
 
     pub fn push_used(&mut self, mem: &mut VirtioGuestMemoryHandle, head: u16, len: u32) {
@@ -286,7 +286,7 @@ impl VirtioQueue {
     }
 
     // -------------------------
-    // DESCRIPTOR FETCH (UNCHANGED LOGIC, FIXED SAFETY)
+    // DESCRIPTOR FETCH
     // -------------------------
 
     pub fn get_descriptor(&self, mem: &VirtioGuestMemoryHandle, index: u16) -> VirtqDesc {

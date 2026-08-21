@@ -7,7 +7,6 @@ use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
     devices::{
         cmos::Cmos,
-        pci::PCI,
         serial::{Serial, SerialMode},
         timer::Pit,
         virtio::{
@@ -41,7 +40,6 @@ fn main() {
 
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
-    let pci = Box::new(PCI::new());
 
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1, 0));
     let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1, 0));
@@ -61,7 +59,7 @@ fn main() {
         }],
         binaries: vec![
             Binary::new(firmware, 0x7E00), // stage2 at 0x7E00
-            Binary::new(firmware64, 0x100000),
+            Binary::new(firmware64, 0x100000), // long mode at 0x100000
             Binary::reset_vector(), // reset vector at top of first 64KB
         ],
         io_devices: vec![
@@ -75,12 +73,10 @@ fn main() {
             MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
             MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
             MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
-            MMIODeviceRegion::new(0xE0000000..=0xE1000000, pci),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
     };
-    machine_config.inject_acpi_tables();
     machine_config.inject_memmap();
 
     let mut vm = VirtualMachine::new(machine_config);
@@ -92,14 +88,5 @@ fn main() {
         }
     }
 
-    vm.dump_mem(0x0, 64); // what's at address 0? (call [rax] target when rax=0)
-    vm.dump_mem(0x7080, 32);
-    vm.dump_mem(0x1221820, 64);
-    vm.dump_mem(0x1214CA0, 64); // return address area from stack dump
-    vm.dump_mem(0x3000000, 256); // system table + handle data + AllocatePool buffer
-
-    // shell call table: instruction at 0x1214CA3 loads RAX from [rip+0xFA43E] = [0x130F0E8]
-    vm.dump_mem(0x130F0E0, 32);
-    vm.dump_mem(0x121DA40, 40); // new return address
-    vm.dump_mem(0x30000D8, 128 * 6); // stub protocol allocations
+    print!("VM Crash!\n");
 }

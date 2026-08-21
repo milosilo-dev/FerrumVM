@@ -8,7 +8,6 @@ use walkdir::WalkDir;
 
 const FIRMWARE_DIR: &str = "guest/firmware";
 const BUILD_DIR: &str = "guest/firmware/build";
-const ACPI_DIR: &str = "acpi";
 
 fn tool(env_var: &str, default: &str) -> String {
     env::var(env_var).unwrap_or_else(|_| default.to_owned())
@@ -23,11 +22,6 @@ fn run(cmd: &str, args: &[&str], error: &str) {
     if !status.success() {
         panic!("{error}");
     }
-}
-
-fn build_acpi(asl: &str) {
-    let dsdt = format!("{ACPI_DIR}/DSDT.dsl");
-    run(asl, &["-tc", &dsdt], "failed to compile DSDT");
 }
 
 fn assemble(asm: &str, input: &str, output: &str, format: &str) {
@@ -96,10 +90,8 @@ fn objcopy_binary(objcopy: &str, input: &str, output: &str) {
     );
 }
 
-fn build_firmware(asm: &str, asl: &str, cc32: &str, cc64: &str, ld: &str, objcopy: &str) {
+fn build_firmware(asm: &str, cc32: &str, cc64: &str, ld: &str, objcopy: &str) {
     fs::create_dir_all(BUILD_DIR).unwrap();
-
-    build_acpi(asl);
 
     // ===== Assembly =====
 
@@ -205,12 +197,11 @@ fn compile_test(asm: &str, path: &Path) {
 
 fn main() {
     let asm = tool("FERRUM_ASM", "nasm");
-    let asl = tool("FERRUM_ASL", "iasl");
     let cc32 = tool("FERRUM_CC32", "i686-elf-gcc");
     let cc64 = tool("FERRUM_CC64", "x86_64-linux-gnu-gcc");
     let ld = tool("FERRUM_LD", "ld");
     let objcopy = tool("FERRUM_OBJCOPY", "objcopy");
 
-    build_firmware(&asm, &asl, &cc32, &cc64, &ld, &objcopy);
+    build_firmware(&asm, &cc32, &cc64, &ld, &objcopy);
     build_tests(&asm);
 }

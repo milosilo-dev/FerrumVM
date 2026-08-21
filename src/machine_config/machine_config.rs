@@ -2,7 +2,6 @@ use crate::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
     irq::map::IrqMap,
     machine_config::{
-        acpi::{dsdt::load_dsdt, fadt::build_fadt, rsdp::build_rsdp, xsdt::build_xsdt},
         binary::Binary,
         mem_map::{MemMap, MemMapHeader, MemType},
     },
@@ -120,17 +119,5 @@ impl MachineConfig {
             data: memmap_bytes,
             offset: 0x7000,
         });
-    }
-
-    pub fn inject_acpi_tables(&mut self) {
-        let dsdt_bin = load_dsdt();
-        let fadt_bin = build_fadt(dsdt_bin.offset);
-        let xsdt_bin = build_xsdt(&[fadt_bin.offset]);
-        let rsdp_bin = build_rsdp(xsdt_bin.offset);
-
-        self.binaries.push(dsdt_bin);
-        self.binaries.push(fadt_bin);
-        self.binaries.push(rsdp_bin);
-        self.binaries.push(xsdt_bin);
     }
 }
