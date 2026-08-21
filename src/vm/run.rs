@@ -1,5 +1,4 @@
 use kvm_ioctls::VcpuExit;
-use libc;
 use std::io::Write;
 
 use crate::vm::vm::VirtualMachine;
@@ -17,28 +16,6 @@ pub enum CrashReason {
 }
 
 impl VirtualMachine {
-    pub fn dump_mem(&self, addr: u64, len: usize) {
-        let regions = self.memory_regions.lock().unwrap();
-        for region in regions.iter() {
-            let end = region.mem_offset + region.mem_size as u64;
-            if addr >= region.mem_offset && addr < end {
-                let offset = (addr - region.mem_offset) as usize;
-                let available = (end - addr).min(len as u64) as usize;
-                if let Some(data) = region.read(offset, available) {
-                    print!("dump at {:#x}: ", addr);
-                    for (i, b) in data.iter().enumerate().take(64) {
-                        if i > 0 && i % 16 == 0 {
-                            print!("\n{:16}", "");
-                        }
-                        print!("{:02x} ", b);
-                    }
-                    println!();
-                }
-                break;
-            }
-        }
-    }
-
     pub fn run(&mut self) -> Result<(), CrashReason> {
         let exit = loop {
             match self.vcpu.fd.run() {
@@ -75,20 +52,19 @@ impl VirtualMachine {
                     Ok(map) => map,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                let io_ret = io_map.input(port, data.len());
-                if io_ret.is_none() {
+
+                if let Some(io_ret) = io_map.input(port, data.len()) {
+                    if io_ret.len() != data.len() {
+                        println!("INCORRECT_IO_INPUT_LENGTH");
+                        return Err(CrashReason::IncorrectIOInputLength);
+                    }
+                    data.copy_from_slice(&io_ret);
+                } else {
                     for b in data.iter_mut() {
                         *b = 0xFF;
                     }
                     return Ok(());
                 }
-                let io_ret = io_ret.unwrap();
-
-                if io_ret.len() != data.len() {
-                    println!("INCORRECT_IO_INPUT_LENGTH");
-                    return Err(CrashReason::IncorrectIOInputLength);
-                }
-                data.copy_from_slice(&io_ret);
             }
             VcpuExit::MmioWrite(addr, data) => {
                 let mut mmio_map = match self.mmio_map.lock() {
@@ -102,21 +78,19 @@ impl VirtualMachine {
                     Ok(map) => map,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                let io_ret = mmio_map.read(addr, data.len());
-                if io_ret.is_none() {
+                if let Some(io_ret) = mmio_map.read(addr, data.len()) {
+                    if io_ret.len() != data.len() {
+                        println!("INCORRECT_MMIO_INPUT_LENGTH");
+                        return Err(CrashReason::IncorrectMMIOReadLength);
+                    }
+
+                    data.copy_from_slice(&io_ret);
+                } else {
                     for b in data.iter_mut() {
                         *b = 0;
                     }
                     return Ok(());
                 }
-                let io_ret = io_ret.unwrap();
-
-                if io_ret.len() != data.len() {
-                    println!("INCORRECT_MMIO_INPUT_LENGTH");
-                    return Err(CrashReason::IncorrectMMIOReadLength);
-                }
-
-                data.copy_from_slice(&io_ret);
             }
             VcpuExit::FailEntry(reason, ..) => {
                 eprintln!("KVM_EXIT_FAIL_ENTRY: reason = {:#x}", reason);
@@ -124,21 +98,6 @@ impl VirtualMachine {
             }
             VcpuExit::Shutdown => {
                 eprintln!("KVM_SHUTDOWN");
-                let regs = self.vcpu.fd.get_regs().unwrap();
-                let sregs = self.vcpu.fd.get_sregs().unwrap();
-                eprintln!("SHUTDOWN at RIP={:#x}", regs.rip);
-                eprintln!(
-                    "RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}",
-                    regs.rax, regs.rbx, regs.rcx, regs.rdx
-                );
-                eprintln!(
-                    "CR0={:#x} CR3={:#x} CR4={:#x} EFER={:#x}",
-                    sregs.cr0, sregs.cr3, sregs.cr4, sregs.efer
-                );
-                eprintln!(
-                    "CS base={:#x} selector={:#x} type={:#x} l={}",
-                    sregs.cs.base, sregs.cs.selector, sregs.cs.type_, sregs.cs.l
-                );
                 return Err(CrashReason::Shutdown);
             }
             exit_reason => {

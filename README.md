@@ -6,217 +6,134 @@
 ![Rust](https://img.shields.io/badge/Rust-1.85+-orange)
 ![C](https://img.shields.io/badge/C-99-f34b7d)
 
-**FerrumVM** is a hobby x86 KVM-based virtual machine monitor written in Rust, with a custom bare-metal guest firmware in C and assembly. It boots a real Linux kernel by implementing the full boot stack from the x86 reset vector through protected mode, long mode, ACPI table injection, virtio MMIO device transport, and the Limine boot protocol through uefi.
+**FerrumVM** is a hobby x86_64 VMM written in Rust using KVM, with a custom C-based UEFI firmware implementation capable of loading Limine and booting Linux with an Alpine Linux userspace. In its current form, it is able to boot custom UEFI firmware, which can be found under the `guest` folder, run a bootloader called Limine within this UEFI environment, and then boot the Linux kernel with an Alpine Linux userland on top of it.
 
----
+## Why?
 
-## Features
+The main reason I built **FerrumVM** is because I love writing code that works at the hardware/software boundary. The issue is that when working with real hardware, it is often difficult to get firmware access to a device, let alone understand it deeply enough to write complete firmware for it.
 
-- **Full x86 boot path** — reset vector (0xFFF0) → real mode → protected mode → long mode (64-bit)
-- **KVM-based virtualization** — vCPU creation, memory registration, IRQ routing
-- **Custom guest firmware** — serial output, paging (PAE, 2MiB huge pages), GDT/IDT/TSS, heap allocator, virtio drivers
-- **Virtio MMIO transport** — legacy + modern mode, queue negotiation, IRQ delivery
-- **Virtio devices:**
-  - `virtio-blk` — block device reading kernel and initramfs from a disk image
-  - `virtio-net` — network device over a TAP interface
-  - `virtio-rng` — entropy source
-  - `virtio-counter` — custom single-descriptor read/write learning device
-- **IO device emulation** — 16550 UART (dual COM), PIT 8253, CMOS/RTC
-- **ACPI table injection** — RSDP, XSDT, FADT, DSDT with virtio device definitions
-- **E820 memory map** — injected form host for guest firmware memory management
-- **Limine bootloader integration** — loads Linux kernel and initramfs via EFI boot protocol
-- **Async device tick thread** — periodic device polling and IRQ delivery
+When working with a virtual machine, however, you are provided with a unique opportunity to have complete control over the hardware that your virtual machine exposes. As a result, you are able to completely write your own firmware and hardware interfaces.
 
----
+This is a big part of the reason I decided to build a UEFI firmware layer myself, because it is not a project that is usually possible for a developer working by themselves to undertake on real hardware. I could have easily used existing firmware such as EDK II's OVMF, or implemented the Linux boot protocol at the firmware level (the standard approach for performance-focused VMMs such as Firecracker), rather than using a bootloader and going through UEFI like I am doing at the moment. Doing it myself, however, means that i get to work with firmware in a way that is hard to do as an indivdual normally.
 
-## How It Works
+## The Host Side
 
-```
-┌──────────────────────────────────────────────┐
-│                Host (Rust)                    │
-│                                               │
-│  VirtualMachine                               │
-│  ├── VCPU (KVM vCPU fd)                       │
-│  ├── MemoryRegion (mmap'd guest RAM)          │
-│  ├── IODeviceMap                              │
-│  │   ├── Serial (0x3F8, 0x2F8)                │
-│  │   ├── PIT    (0x40–0x43)                   │
-│  │   └── CMOS   (0x70–0x71)                   │
-│  ├── MMIODeviceMap                            │
-│  │   ├── RngVirtio   (0x20000000)             │
-│  │   ├── CounterVirtio (0x20001000)           │
-│  │   ├── BlkVirtio   (0x20002000)             │
-│  │   ├── NetVirtio   (0x20003000)             │
-│  │   └── PCI         (0xE0000000)             │
-│  └── Tick thread (async device polling)       │
-└────────────────────┬─────────────────────────┘
-                     │ KVM
-┌────────────────────▼─────────────────────────┐
-│              Guest (C/asm)                     │
-│                                                │
-│  entry.asm → c_main_32() → long mode           │
-│  ├── ACPI table parsing                        │
-│  ├── virtio MMIO device init                   │
-│  ├── virtio-blk reads (kernel, initramfs)      │
-│  └── Limine → Linux kernel boot                │
-└────────────────────────────────────────────────┘
-```
+The host side is written in Rust and has the role of managing vCPUs, handling VM exits, and emulating hardware devices to expose to the guest.
 
-### Boot Flow
+### Managing vCPUs
 
-1. x86 CPU starts at the **reset vector** (0xFFF0), which far-jumps to the firmware entry at 0x7E00
-2. `entry.asm` transitions from real mode → protected mode → long mode
-3. `c_main_32()` sets up paging, GDT, and enters 64-bit mode
-4. `c_main_64()` parses ACPI tables, initializes virtio devices, reads the kernel and initramfs from disk via virtio-blk
-5. **Limine boot protocol** transfers control to the Linux kernel
-6. Linux boots with serial console output via the emulated 16550 UART
+When managing vCPUs, KVM handles the bulk of the work, which means the code I have for this role is fairly standard compared to what other VMMs would do.
 
----
+The main role of the vCPU struct in `vcpu.rs` is to set up the CPU registers initially before handing control over to my assembly stub. I have tried to design this aspect of the program to be scalable, so that if I want to add multiple vCPUs in the future, there will not need to be a huge code change.
 
-## Quick Start
+### Handling VM Exits
 
-### Prerequisites
+When using KVM and other virtual machines, a **VM exit** occurs whenever the guest CPU needs the VMM to handle an operation that cannot be executed directly by the virtualised hardware.
 
-```bash
-# Rust toolchain
-curl https://sh.rustup.rs -sSf | sh
+This is much more efficient than handing control back to the VMM every CPU cycle because it massively improves performance and keeps most of the per-cycle logic inside the kernel. An example of something that might trigger a VM exit is when the guest CPU attempts to access an I/O port or perform an operation that requires emulation.
 
-# Guest firmware build tools
-sudo apt install gcc-multilib binutils nasm iasl
+My implementation of this system involves a large `match` statement that covers every VM exit type supported by my VMM. It then calls out to another section of the program to handle the specific exit, which helps keep the amount of code in the main VM exit handler manageable.
 
-# 64-bit cross-compiler for firmware
-sudo apt install gcc-x86-64-linux-gnu
-```
+## Emulating Devices
 
-> **Note:** The build script also expects `i686-elf-gcc`. Install a cross-compiler for the 32-bit firmware target if needed, or adjust `build.rs` to use a different toolchain.
+I have two different types of devices which cover most of what needs to be emulated. These are **MMIO devices** and **I/O devices**.
 
-### Build and Run
+MMIO devices own a section of memory and are able to respond to all reads and writes that occur within those addresses. I/O devices, on the other hand, own a section of I/O ports which can be used to control a virtual device.
 
-```bash
-cargo run
-```
+I use traits for each of these device types so that I can implement them independently, allowing each device to handle its own logic completely separately from the rest of the host. This makes the whole system easily expandable and allows it to support all manner of different devices.
 
-The `build.rs` script automatically assembles the firmware entry, compiles the C firmware, links and strips it to a flat binary, compiles the ACPI DSDT, and then the Rust VMM code compiles and runs.
+The total list of devices that I support at the moment is:
 
-### Network (Optional)
+- CMOS chip
+- Serial device for communication
+- Timer chip
+- VirtIO BLK device (disk)
+- VirtIO RNG device (randomness)
 
-For virtio-net support, the host needs TAP device access:
+VirtIO is a protocol which allows devices to communicate through shared sections of memory rather than relying solely on the MMIO and I/O methods discussed earlier. I use it in FerrumVM for more complicated devices, such as block devices, which need to handle large amounts of shared memory.
 
-```bash
-sudo ip tuntap add dev tap0 mode tap user $(whoami)
-sudo ip link set tap0 up
-```
+FerrumVM implements VirtIO devices using virtqueues, allowing the guest and host to exchange buffers through shared guest memory rather than requiring an individual VM exit for every byte of I/O.
 
----
+# The Custom firmware
 
-## Guest Memory Layout
+The guest side is written mainly in C, with a small assembly stub at the start to handle CPU mode transitions, moving from real mode to protected mode and then to long mode.
 
-| Address | Contents |
-|---------|----------|
-| `0x7C00` | Guest stack pointer (grows down) |
-| `0x7E00` | Firmware entry point (`_start`) |
-| `0xFFF0` | Reset vector — far jump to `0x7E00` |
-| `0x100000` | 64-bit firmware (`main64.bin`) |
-| `0x20000000` | virtio-rng MMIO region |
-| `0x20001000` | virtio-counter MMIO region |
-| `0x20002000` | virtio-blk MMIO region |
-| `0x20003000` | virtio-net MMIO region |
-| `0xE0000000` | PCI MMIO region |
+Once in the core of the C firmware, its main job is to find the bootloader on disk and execute its `BOOTX64.EFI` program. Doing this involves three steps:
 
----
+## Finding and Reading the Binary
 
-## Project Structure
+When finding the binary, I must be able to read both from the disk and from the filesystem that is written to the disk.
 
-```
-src/                          # Host VMM (Rust)
-├── main.rs                   # Entry point and run loop
-├── lib.rs                    # Module re-exports
-├── vcpu.rs                   # vCPU creation and register init
-├── memory_region.rs          # Guest RAM (mmap)
-├── vm/                       # VirtualMachine core
-│   ├── builder.rs            # Construction and KVM setup
-│   ├── vm.rs                 # Struct definition
-│   ├── run.rs                # KVM exit dispatch
-│   └── tick.rs               # Async device polling
-├── machine_config/           # Machine configuration
-│   ├── machine_config.rs     # Config types
-│   ├── binary.rs             # Binary blob placement
-│   ├── mem_map.rs            # E820 memory map
-│   └── acpi/                 # ACPI table builders
-├── irq/                      # IRQ routing
-├── device_maps/              # IO/MMIO dispatch
-└── devices/
-    ├── serial.rs             # 16550 UART
-    ├── timer.rs              # PIT 8253
-    ├── cmos.rs               # CMOS/RTC
-    ├── pci.rs                # PCI config space
-    └── virtio/
-        ├── virtio.rs         # Core types and traits
-        ├── transports/mmio.rs # MMIO transport layer
-        └── devices/
-            ├── rng.rs        # virtio-rng
-            ├── counter.rs    # virtio-counter (custom)
-            ├── blk.rs        # virtio-blk
-            └── net.rs        # virtio-net
+To do this, I first wrote a driver for my VirtIO BLK device, which allows me to read from and write to the disk. I then implemented the FAT32 filesystem format, which allows me to read the specific files and directories that are stored on the disk. This is what allows me to locate the binary that I am looking for.
 
-guest/                        # Guest firmware (C/asm)
-├── firmware/
-│   ├── main.c                # 32-bit entry firmware
-│   ├── main64.c              # 64-bit firmware (Limine boot)
-│   ├── entry.asm             # Reset vector → protected mode → long mode
-│   ├── assembly/             # Assembly stubs and IDT handlers
-│   ├── headers/              # Firmware headers
-│   ├── mem/                  # Heap and memory map
-│   ├── virtio/               # Guest virtio drivers
-│   ├── efi/                  # EFI protocol definitions
-│   ├── disk/                 # Disk access helpers
-│   └── linkerscript/         # Linker scripts
-├── image/                    # Disk image and boot config
-└── tests/                    # Assembly test programs
+Because UEFI applications use the PE/COFF executable format, FerrumVM includes a small PE/COFF loader capable of parsing the executable headers, locating sections, mapping them into guest memory, and transferring control to the EFI entry point.
 
-build.rs                      # Firmware build script
-acpi/                          # ACPI DSDT source
-```
+## Creating a Suitable UEFI Environment
 
----
+The entry point of this binary requires two arguments: the `EFI_SYSTEM_TABLE` and the `EFI_IMAGE_HANDLE`. `EFI_SYSTEM_TABLE` is a structure used to provide the bootloader with access to the UEFI firmware interface. `EFI_IMAGE_HANDLE` is an opaque pointer to the loaded image that is being executed.
 
-## Roadmap
+All of the function pointers that are accessed by Limine have to be correctly filled out. Otherwise, when I execute the binary, it will simply break and something unexpected will happen, likely resulting in a jump into garbage memory.
 
-### Done
+Some exaples of function pointers which I implemnted are:
+- filesystem access
+- memory allocation
+- protocol installation
+- device paths
+- loaded image protocol
+- block I/O
+- ACPI tables
+- memory map
 
-- [x] KVM vCPU setup and run loop
-- [x] IO device dispatch (serial, PIT, CMOS)
-- [x] MMIO device dispatch
-- [x] Virtio MMIO transport
-- [x] Guest firmware — entry, serial output, paging, long mode
-- [x] virtio-rng
-- [x] virtio-counter (custom learning device)
-- [x] virtio-blk (kernel and initramfs loading)
-- [x] virtio-net (TAP interface, RX/TX queues)
-- [x] ACPI table injection (RSDP, XSDT, FADT, DSDT)
-- [x] PCI configuration space
-- [x] Limine bootloader integration
-- [x] Linux kernel boot (Alpine Linux)
+When filling out all of these functions, I had to write drivers for each of the existing hardware devices that the host implements so that the UEFI environment is able to correctly communicate with the virtual hardware.
 
-### In Progress / Planned
+Once the long process of implementing each required function was complete, Limine was finally able to boot.
 
-- [ ] Interrupt-driven virtio (vs. polling)
-- [ ] Robust disk image support
-- [ ] SMP support
-- [ ] MSI-X interrupt delivery
-- [ ] Rust guest firmware (experimental)
+## Providing a Root Filesystem for the Linux Kernel
 
----
+Once I was inside Limine, it was not too difficult to get the Linux kernel booting because the Linux boot protocol is implemented by Limine and does not need to be implemented by me.
 
-## Why I Built FerrumVM
+In order to do this i provided the kernel with:
+- kernel image
+- initramfs
+- memory map
+- serial device
 
-I wanted to understand how operating systems interact with hardware.
+What did require some thought was how I was going to structure the Alpine root filesystem for the kernel to access and boot into.
 
-Rather than writing a toy kernel, I decided to build a complete virtual machine monitor and guest firmware from scratch.
+For this, I provide an initramfs which I point the Linux kernel to. From there, BusyBox is used to initialise the Alpine root filesystem, which provides the shell and user login that you see when running FerrumVM.
 
-The project began as an exploration of x86 booting and evolved into a Linux-capable virtual platform supporting ACPI, VirtIO devices, and the Limine boot protocol.
+# What I Learned
 
----
+The process of building this project was extremely valuable to me because not only is it a massive project which required months of dedication to finish, but it also exposed me to different aspects of computer science that I had never considered before.
+
+Some of the topics that this project touched on where:
+- How KVM exposes hardware virtualisation to userspace
+- How x86 CPU modes transition from real mode to protected mode to long mode
+- How UEFI applications are loaded and executed
+- How PE/COFF executables are structured
+- How FAT32 stores files and directories
+- How VirtIO communicates through shared memory
+- How Linux is bootstrapped through a bootloader
+- How firmware interfaces are represented through ABI-compatible structures and function pointers
+
+I also learned a lot of new methods for researching these topics, which are often not well documented on my typical platforms such as YouTube.
+
+One resource that was tremendously helpful during the firmware stage of the project was the [UEFI specification](https://uefi.org/specs/UEFI/2.11/), which provided me with information about practically every function in the UEFI system table.
+
+## Current Status
+
+FerrumVM is currently capable of:
+
+- [x] Booting an x86_64 guest using KVM
+- [x] Running custom UEFI firmware
+- [x] Reading a FAT32 filesystem
+- [x] Loading PE/COFF EFI applications
+- [x] Providing the UEFI interfaces required by Limine
+- [x] Booting Limine
+- [x] Booting the Linux kernel
+- [x] Providing an Alpine Linux userspace
+- [x] VirtIO block device
+- [x] VirtIO RNG
 
 ## License
 

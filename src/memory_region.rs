@@ -21,7 +21,7 @@ impl MemoryRegion {
             mem_offset: mem_offset,
         }
     }
-    
+
     pub fn write(&self, data: &[u8], addr: usize) {
         if self.ptr.is_null() || addr + data.len() > self.mem_size {
             return;

@@ -6,9 +6,7 @@ pub struct ConsoleVirtio {
 
 impl ConsoleVirtio {
     pub fn new() -> Self {
-        ConsoleVirtio {
-            guest_memory: None,
-        }
+        ConsoleVirtio { guest_memory: None }
     }
 
     // Send Packet to client
@@ -18,7 +16,6 @@ impl ConsoleVirtio {
 
     // Handle packet from client
     fn tick_tx_queue(&mut self, _queue: &mut VirtioQueue) -> bool {
-        // Output the data on the virt queue
         true
     }
 }

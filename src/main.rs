@@ -58,9 +58,9 @@ fn main() {
             mem_offset: 0x0000,
         }],
         binaries: vec![
-            Binary::new(firmware, 0x7E00), // stage2 at 0x7E00
+            Binary::new(firmware, 0x7E00),     // stage2 at 0x7E00
             Binary::new(firmware64, 0x100000), // long mode at 0x100000
-            Binary::reset_vector(), // reset vector at top of first 64KB
+            Binary::reset_vector(),            // reset vector at top of first 64KB
         ],
         io_devices: vec![
             IODeviceRegion::new(0x40..=0x43, timer),
