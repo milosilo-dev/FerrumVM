@@ -161,6 +161,8 @@ FerrumVM is currently capable of:
 - [x] Providing an Alpine Linux userspace
 - [x] VirtIO block device
 - [x] VirtIO RNG
+- [ ] VirtIO Net
+- [ ] VirtIO Gpu
 
 ## AI Usage
 
