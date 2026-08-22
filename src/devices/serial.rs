@@ -85,13 +85,12 @@ impl Serial {
                                         if modifiers.contains(KeyModifiers::CONTROL) =>
                                     {
                                         let ctrl_byte = (c as u8) & 0x1F;
-                                        &[ctrl_byte] as &[u8] // won't work as a match arm directly, see below
+                                        &[ctrl_byte] as &[u8]
                                     }
 
-                                    // Printable characters (including Enter-as-\r for terminals)
+                                    // Printable characters
                                     KeyCode::Char(c) => {
                                         let mut q = queue.lock().unwrap();
-                                        // Handle multi-byte UTF-8
                                         let mut buf = [0u8; 4];
                                         let s = c.encode_utf8(&mut buf);
                                         q.extend_from_slice(s.as_bytes());

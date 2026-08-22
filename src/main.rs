@@ -3,6 +3,8 @@ use std::{
     os::fd::AsRawFd,
 };
 
+use crossterm::terminal::disable_raw_mode;
+
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
     devices::{
@@ -90,5 +92,6 @@ fn main() {
         }
     }
 
+    disable_raw_mode().unwrap();
     print!("VM Crash!\n");
 }
