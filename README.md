@@ -42,6 +42,9 @@ After that you are ready to run the virtual machine with
 ```
 cargo run
 ```
+If it works it should look like:
+
+https://github.com/user-attachments/assets/9408d31c-a51b-41ee-931c-c8be3873740b
 
 ## The Host Side
 
