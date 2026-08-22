@@ -263,10 +263,6 @@ impl VirtioQueue {
         Some(head)
     }
 
-    // -------------------------
-    // USED RING
-    // -------------------------
-
     pub fn push_used(&mut self, mem: &mut VirtioGuestMemoryHandle, head: u16, len: u32) {
         if self.size == 0 {
             return;
@@ -281,13 +277,8 @@ impl VirtioQueue {
 
         self.last_used_idx = self.last_used_idx.wrapping_add(1);
 
-        // publish to guest (IMPORTANT)
         Self::write_u16(mem, self.used_addr + 2, self.last_used_idx);
     }
-
-    // -------------------------
-    // DESCRIPTOR FETCH
-    // -------------------------
 
     pub fn get_descriptor(&self, mem: &VirtioGuestMemoryHandle, index: u16) -> VirtqDesc {
         let base = self.desc_addr + (index as u64) * 16;
@@ -300,7 +291,6 @@ impl VirtioQueue {
         }
     }
 
-    // optional helper
     pub fn read_avail_entry(&self, mem: &VirtioGuestMemoryHandle, idx: u16) -> u16 {
         let ring_offset = 4 + ((idx % self.size) as u64) * 2;
         mem.read_u16(self.avail_addr + ring_offset)

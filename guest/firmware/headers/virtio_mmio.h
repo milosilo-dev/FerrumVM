@@ -5,6 +5,7 @@
 #define VIRTIO_RNG_BASE     0x20000000
 #define VIRTIO_CNT_BASE     0x20001000
 #define VIRTIO_BLK_BASE     0x20002000
+#define VIRTIO_NET_BASE     0x20003000
 
 // MMIO register offsets (all 32-bit reads/writes)
 #define VIRTIO_MMIO_MAGIC           0x000  // must read 0x74726976 ("virt")
@@ -45,4 +46,8 @@ static inline void mmio_write(uint32_t base, uint32_t offset, uint32_t val) {
 
 static inline uint32_t mmio_read(uint32_t base, uint32_t offset) {
     return *((volatile uint32_t *)(base + offset));
+}
+
+static inline void virtio_mb(void) {
+    __asm__ volatile("mfence" ::: "memory");
 }

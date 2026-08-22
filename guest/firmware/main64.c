@@ -10,6 +10,7 @@
 #include "mem/memmap.h"
 #include "mem/stack.h"
 #include "virtio/blk.h"
+#include "virtio/net.h"
 #include "disk/esp.h"
 #include "disk/fat32.h"
 #include "disk/boot.h"
@@ -44,6 +45,17 @@ void c_main_64(void) {
     init_heap(0x3000000, 0x4000000);
 
     virtio_blk_init();
+    virtio_net_init();
+
+    uint8_t net_buf[100];
+    uint16_t len = virtio_net_poll_receive(net_buf, 100);
+    serial_puts("Net result: [");
+    for (int i = 0; i < len; i++){
+        serial_puts("0x");
+        serial_putx(net_buf[i]);
+        serial_puts(", ");
+    }
+    serial_puts("]\n");
 
     uint8_t* file_buf = (uint8_t*)0x1000000;
     int status = load_efi_application(file_buf);
@@ -61,6 +73,7 @@ void c_main_64(void) {
 #include "mem/stack.c"
 #include "tss.c"
 #include "virtio/blk.c"
+#include "virtio/net.c"
 #include "efi/blockio.c"
 #include "efi/dev_path.c"
 #include "efi/sfsp.c"

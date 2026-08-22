@@ -4,22 +4,14 @@ use std::{
 };
 
 use ferrumvm::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    devices::{
-        cmos::Cmos,
-        serial::{Serial, SerialMode},
-        timer::Pit,
-        virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio},
-            transports::mmio::MMIOTransport,
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, devices::{
+        cmos::Cmos, serial::{Serial, SerialMode}, timer::Pit, virtio::{
+            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport,
         },
-    },
-    irq::map::IrqMap,
-    machine_config::{
+    }, irq::map::IrqMap, machine_config::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
-    },
-    vm::vm::VirtualMachine,
+    }, vm::vm::VirtualMachine,
 };
 
 fn main() {
@@ -48,6 +40,11 @@ fn main() {
         1,
         5,
     ));
+    let net = Box::new(MMIOTransport::new(
+        Box::new(NetVirtio::new()),
+        2,
+        6,
+    ));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
@@ -73,6 +70,7 @@ fn main() {
             MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
             MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
             MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
+            MMIODeviceRegion::new(0x20003000..=0x20003FFF, net),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here

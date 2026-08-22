@@ -6,9 +6,6 @@
 
 static volatile Virtqueue blk_queue __attribute__((aligned(4096)));
 
-static inline void virtio_mb(void) {
-    __asm__ volatile("mfence" ::: "memory");
-}
 static uint16_t  blk_next_desc = 0;
 static uint16_t  blk_avail_idx = 0;
 static uint16_t blk_last_used = 0;
