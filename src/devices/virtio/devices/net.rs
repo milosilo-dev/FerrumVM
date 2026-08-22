@@ -11,14 +11,8 @@ struct NetVirtioConfig {
 }
 
 impl NetVirtioConfig {
-    pub fn new(
-        mac: [u8; 6],
-        status: u16,
-    ) -> Self {
-        return Self {
-            mac,
-            status,
-        };
+    pub fn new(mac: [u8; 6], status: u16) -> Self {
+        return Self { mac, status };
     }
 
     pub fn to_bytes(&self, length: usize) -> Vec<u8> {
@@ -39,8 +33,13 @@ pub struct NetVirtio {
 
 impl NetVirtio {
     pub fn new() -> Self {
-        let mut ret = Self { guest_memory: None, packet_recive_queue: VecDeque::new(), config: NetVirtioConfig::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x01], 0) };
-        ret.packet_recive_queue.push_back(vec![0x67, 0x67, 0x54, 0x69]);
+        let mut ret = Self {
+            guest_memory: None,
+            packet_recive_queue: VecDeque::new(),
+            config: NetVirtioConfig::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x01], 0),
+        };
+        ret.packet_recive_queue
+            .push_back(vec![0x67, 0x67, 0x54, 0x69]);
         ret
     }
 }
@@ -74,7 +73,7 @@ impl VirtioDevice for NetVirtio {
                 };
 
                 let mut did_work: bool = false;
-                while let Some(eth_frame) = self.packet_recive_queue.pop_front(){
+                while let Some(eth_frame) = self.packet_recive_queue.pop_front() {
                     let Some(head) = queue.pop_avail(guest_memory) else {
                         self.packet_recive_queue.push_front(eth_frame);
                         return did_work;
@@ -115,13 +114,13 @@ impl VirtioDevice for NetVirtio {
                     let mut eth_frame: Vec<u8> = vec![0; (desc.len - hdr_size) as usize];
                     guest_memory.read_guest_memory(desc.addr + hdr_size as u64, &mut eth_frame);
                     print!("Queue sent: {:X?}\r\n", eth_frame);
-        
+
                     queue.push_used(guest_memory, head, desc.len);
                     did_work = true;
                 }
                 return did_work;
             }
-            _ => {false}
+            _ => false,
         }
     }
 
@@ -129,5 +128,7 @@ impl VirtioDevice for NetVirtio {
         self.config.to_bytes(length)
     }
 
-    fn update(&mut self, _queues: &mut [crate::devices::virtio::virtio::VirtioQueue]) -> bool { false }
+    fn update(&mut self, _queues: &mut [crate::devices::virtio::virtio::VirtioQueue]) -> bool {
+        false
+    }
 }

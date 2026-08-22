@@ -4,14 +4,22 @@ use std::{
 };
 
 use ferrumvm::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, devices::{
-        cmos::Cmos, serial::{Serial, SerialMode}, timer::Pit, virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport,
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
+    devices::{
+        cmos::Cmos,
+        serial::{Serial, SerialMode},
+        timer::Pit,
+        virtio::{
+            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
+            transports::mmio::MMIOTransport,
         },
-    }, irq::map::IrqMap, machine_config::{
+    },
+    irq::map::IrqMap,
+    machine_config::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
-    }, vm::vm::VirtualMachine,
+    },
+    vm::vm::VirtualMachine,
 };
 
 fn main() {
@@ -40,11 +48,7 @@ fn main() {
         1,
         5,
     ));
-    let net = Box::new(MMIOTransport::new(
-        Box::new(NetVirtio::new()),
-        2,
-        6,
-    ));
+    let net = Box::new(MMIOTransport::new(Box::new(NetVirtio::new()), 2, 6));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
