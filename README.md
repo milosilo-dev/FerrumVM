@@ -16,6 +16,27 @@ When working with a virtual machine, however, you are provided with a unique opp
 
 This is a big part of the reason I decided to build a UEFI firmware layer myself, because it is not a project that is usually possible for a developer working by themselves to undertake on real hardware. I could have easily used existing firmware such as EDK II's OVMF, or implemented the Linux boot protocol at the firmware level (the standard approach for performance-focused VMMs such as Firecracker), rather than using a bootloader and going through UEFI like I am doing at the moment. Doing it myself, however, means that i get to work with firmware in a way that is hard to do as an indivdual normally.
 
+## How to use
+
+The first step of running ferrum is to clone the repo:
+
+```
+git clone https://www.github.com/milosilo-dev/FerrumVM
+cd FerrumVM
+```
+
+Then, you can use nix to get all of the dependancies on your system. (This might take a while)
+
+`nix develop`
+
+Now you are ready to build a valid image that the virtual machine can boot. The command bellow will copy the limine image passed as a parameter and copy it to the efi partition of the new disk. It also installs the linux kernel and rootfs as well as initramfs for the kernel when it boots.
+
+`sudo bash guest/image/mk_image.sh prebuilt/limine.efi`
+
+After that you are ready to run the virtual machine with
+
+`cargo run`
+
 ## The Host Side
 
 The host side is written in Rust and has the role of managing vCPUs, handling VM exits, and emulating hardware devices to expose to the guest.
@@ -54,13 +75,13 @@ VirtIO is a protocol which allows devices to communicate through shared sections
 
 FerrumVM implements VirtIO devices using virtqueues, allowing the guest and host to exchange buffers through shared guest memory rather than requiring an individual VM exit for every byte of I/O.
 
-# The Custom firmware
+## The Custom firmware
 
 The guest side is written mainly in C, with a small assembly stub at the start to handle CPU mode transitions, moving from real mode to protected mode and then to long mode.
 
 Once in the core of the C firmware, its main job is to find the bootloader on disk and execute its `BOOTX64.EFI` program. Doing this involves three steps:
 
-## Finding and Reading the Binary
+### Finding and Reading the Binary
 
 When finding the binary, I must be able to read both from the disk and from the filesystem that is written to the disk.
 
@@ -68,7 +89,7 @@ To do this, I first wrote a driver for my VirtIO BLK device, which allows me to 
 
 Because UEFI applications use the PE/COFF executable format, FerrumVM includes a small PE/COFF loader capable of parsing the executable headers, locating sections, mapping them into guest memory, and transferring control to the EFI entry point.
 
-## Creating a Suitable UEFI Environment
+### Creating a Suitable UEFI Environment
 
 The entry point of this binary requires two arguments: the `EFI_SYSTEM_TABLE` and the `EFI_IMAGE_HANDLE`. `EFI_SYSTEM_TABLE` is a structure used to provide the bootloader with access to the UEFI firmware interface. `EFI_IMAGE_HANDLE` is an opaque pointer to the loaded image that is being executed.
 
@@ -88,7 +109,7 @@ When filling out all of these functions, I had to write drivers for each of the 
 
 Once the long process of implementing each required function was complete, Limine was finally able to boot.
 
-## Providing a Root Filesystem for the Linux Kernel
+### Providing a Root Filesystem for the Linux Kernel
 
 Once I was inside Limine, it was not too difficult to get the Linux kernel booting because the Linux boot protocol is implemented by Limine and does not need to be implemented by me.
 
@@ -102,7 +123,7 @@ What did require some thought was how I was going to structure the Alpine root f
 
 For this, I provide an initramfs which I point the Linux kernel to. From there, BusyBox is used to initialise the Alpine root filesystem, which provides the shell and user login that you see when running FerrumVM.
 
-# What I Learned
+## What I Learned
 
 The process of building this project was extremely valuable to me because not only is it a massive project which required months of dedication to finish, but it also exposed me to different aspects of computer science that I had never considered before.
 
@@ -134,6 +155,12 @@ FerrumVM is currently capable of:
 - [x] Providing an Alpine Linux userspace
 - [x] VirtIO block device
 - [x] VirtIO RNG
+
+## AI Usage
+
+LLM's are a key tool that used for research during the project, they are realy good for sumerising protocols that I need to impelement. I made sure to limit the amount of code that is written by them however because this is my project and there is no benifit from having them do it all for them.
+
+There is however, despit this, small sections written by AI. I have made sure to audit them up to my usual code standed, so they will not cause issues but i think its better to be trasparent about the usage than try to hide it.
 
 ## License
 
