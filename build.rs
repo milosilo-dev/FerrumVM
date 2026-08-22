@@ -198,7 +198,7 @@ fn compile_test(asm: &str, path: &Path) {
 fn main() {
     let asm = tool("FERRUM_ASM", "nasm");
     let cc32 = tool("FERRUM_CC32", "i686-elf-gcc");
-    let cc64 = tool("FERRUM_CC64", "x86_64-linux-gnu-gcc");
+    let cc64 = tool("FERRUM_CC64", "gcc");
     let ld = tool("FERRUM_LD", "ld");
     let objcopy = tool("FERRUM_OBJCOPY", "objcopy");
 

@@ -12,7 +12,8 @@
         packages = with pkgs; [
           rustc
           cargo
-          gcc16
+          gcc-unwrapped 
+          binutils-unwrapped
           pkg-config
           pkgsCross.i686-embedded.buildPackages.gcc
           nasm
