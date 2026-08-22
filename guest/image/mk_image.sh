@@ -10,7 +10,6 @@ do
     bash "$test/build.sh"
 done
 
-cp ../driver/driver.ko rootfs/ferrum-driver.ko
 cp $1 BOOTX64.EFI
 
 mkdir -p rootfs/dev
