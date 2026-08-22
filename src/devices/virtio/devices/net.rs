@@ -39,7 +39,7 @@ pub struct NetVirtio {
 
 impl NetVirtio {
     pub fn new() -> Self {
-        let mut ret = Self { guest_memory: None, packet_recive_queue: VecDeque::new(), config: NetVirtioConfig::new([0x0, 0x0, 0x0, 0x0, 0x0, 0x0], 0) };
+        let mut ret = Self { guest_memory: None, packet_recive_queue: VecDeque::new(), config: NetVirtioConfig::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x01], 0) };
         ret.packet_recive_queue.push_back(vec![0x67, 0x67, 0x54, 0x69]);
         ret
     }
@@ -51,7 +51,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn features(&self) -> u64 {
-        1 >> VIRTIO_NET_F_MAC | 1 >> VIRTIO_NET_F_STATUS
+        1 << VIRTIO_NET_F_MAC | 1 << VIRTIO_NET_F_STATUS
     }
 
     fn pass_guest_memory(
@@ -114,7 +114,7 @@ impl VirtioDevice for NetVirtio {
 
                     let mut eth_frame: Vec<u8> = vec![0; (desc.len - hdr_size) as usize];
                     guest_memory.read_guest_memory(desc.addr + hdr_size as u64, &mut eth_frame);
-                    print!("Queue sent: {:?}\n", eth_frame);
+                    print!("Queue sent: {:X?}\r\n", eth_frame);
         
                     queue.push_used(guest_memory, head, desc.len);
                     did_work = true;

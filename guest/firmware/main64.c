@@ -45,17 +45,22 @@ void c_main_64(void) {
     init_heap(0x3000000, 0x4000000);
 
     virtio_blk_init();
-    virtio_net_init();
+    //virtio_net_init();
 
-    uint8_t net_buf[100];
-    uint16_t len = virtio_net_poll_receive(net_buf, 100);
-    serial_puts("Net result: [");
-    for (int i = 0; i < len; i++){
-        serial_puts("0x");
-        serial_putx(net_buf[i]);
-        serial_puts(", ");
-    }
-    serial_puts("]\n");
+    //uint8_t net_buf[100];
+    //uint16_t len = virtio_net_poll_receive(net_buf, 100);
+    //serial_puts("Net result: [");
+    //for (int i = 0; i < len; i++){
+    //    serial_puts("0x");
+    //    serial_putx(net_buf[i]);
+    //    if (i != len - 1){
+    //        serial_puts(", ");
+    //    }
+    //}
+    //serial_puts("]\n");
+
+    //uint8_t net_send_buf[4] = {0x67, 0x67, 0x69, 0x67};
+    //uint8_t len2 = virtio_net_send(net_send_buf, 4);
 
     uint8_t* file_buf = (uint8_t*)0x1000000;
     int status = load_efi_application(file_buf);
