@@ -27,15 +27,21 @@ cd FerrumVM
 
 Then, you can use nix to get all of the dependancies on your system. (This might take a while)
 
-`nix develop`
+```
+nix develop
+```
 
 Now you are ready to build a valid image that the virtual machine can boot. The command bellow will copy the limine image passed as a parameter and copy it to the efi partition of the new disk. It also installs the linux kernel and rootfs as well as initramfs for the kernel when it boots.
 
-`sudo bash guest/image/mk_image.sh prebuilt/limine.efi`
+```
+sudo bash guest/image/mk_image.sh prebuilt/limine.efi
+```
 
 After that you are ready to run the virtual machine with
 
-`cargo run`
+```
+cargo run
+```
 
 ## The Host Side
 
