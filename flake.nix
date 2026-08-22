@@ -12,7 +12,7 @@
         packages = with pkgs; [
           rustc
           cargo
-          gcc
+          gcc16
           pkg-config
           pkgsCross.i686-embedded.buildPackages.gcc
           nasm
@@ -20,12 +20,6 @@
           parted
           pkgsCross.mingwW64.stdenv.cc
         ];
-
-        shellHook = ''
-            mkdir -p .dev-bin
-            ln -sf "$(command -v gcc)" .dev-bin/x86_64-linux-gnu-gcc
-            export PATH="$PWD/.dev-bin:$PATH"
-        '';
       };
     };
 }
