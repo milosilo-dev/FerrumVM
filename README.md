@@ -163,6 +163,8 @@ FerrumVM is currently capable of:
 - [x] VirtIO RNG
 - [ ] VirtIO Net
 - [ ] VirtIO Gpu
+- [ ] VirtIO Console
+- [ ] PCI Support
 
 ## AI Usage
 
