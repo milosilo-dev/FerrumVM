@@ -61,7 +61,7 @@ impl VCPU {
     pub fn new(
         vm: Arc<Mutex<VmFd>>,
         entry: usize,
-        mut cpuid: &mut vmm_sys_util::fam::FamStructWrapper<kvm_bindings::kvm_cpuid2>,
+        mut cpuid: &mut FamStructWrapper<kvm_bindings::kvm_cpuid2>,
     ) -> Self {
         let vm_lock = vm.lock().unwrap();
         let vcpu = vm_lock.create_vcpu(0).unwrap();

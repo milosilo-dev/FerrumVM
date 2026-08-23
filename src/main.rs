@@ -12,7 +12,12 @@ use ferrumvm::{
         serial::{Serial, SerialMode},
         timer::Pit,
         virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
+            devices::{
+                blk::BlkVirtio,
+                counter::CntVirtio,
+                net::{NetVirtio, TAPDevice},
+                rng::RngVirtio,
+            },
             transports::mmio::MMIOTransport,
         },
     },
@@ -50,7 +55,11 @@ fn main() {
         1,
         5,
     ));
-    let net = Box::new(MMIOTransport::new(Box::new(NetVirtio::new()), 2, 6));
+    let net = Box::new(MMIOTransport::new(
+        Box::new(NetVirtio::new(TAPDevice::new().unwrap())),
+        2,
+        6,
+    ));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();

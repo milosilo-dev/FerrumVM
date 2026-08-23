@@ -137,6 +137,8 @@ impl MMIODevice for MMIOTransport {
             }
             0x050 => {
                 let queue_idx = read_u32_from_data(data) as usize;
+                eprint!("NOTIFY: device={} queue_idx={} ready={}\r\n", self.device.virtio_type(), queue_idx,
+                    self.queues.get(queue_idx).map(|q| q.ready).unwrap_or(false));
 
                 if queue_idx < self.queues.len() && self.queues[queue_idx].ready {
                     let did_work = self
@@ -162,6 +164,7 @@ impl MMIODevice for MMIOTransport {
             }
             0x070 => {
                 let val = read_u32_from_data(data);
+                eprint!("STATUS write: val=0x{:X} device={}\r\n", val, self.device.virtio_type());
                 if val == 0 {
                     for q in &mut self.queues {
                         *q = VirtioQueue::new();
