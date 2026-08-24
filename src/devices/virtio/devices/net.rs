@@ -1,77 +1,10 @@
-use std::{collections::VecDeque, net::{Ipv6Addr, Ipv4Addr}};
-use tappers::AddAddressV4;
-use tappers::Tap;
-
-use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle};
+use crate::{
+    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle},
+    networking::tap::TAPDevice,
+};
 
 const VIRTIO_NET_F_MAC: u8 = 5;
 const VIRTIO_NET_F_STATUS: u8 = 16;
-
-pub struct TAPDevice {
-    tap: Tap,
-    pub packet_recive_queue: VecDeque<Vec<u8>>,
-}
-
-impl TAPDevice {
-    pub fn new() -> Result<Self, String> {
-        let Ok(mut tap) = Tap::new() else {
-            return Err("Tap Could not be created".to_string());
-        };
-
-        let Ok(_) = tap.add_addr(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff)) else {
-            return Err("Could not add an IP Address".to_string());
-        };
-        let mut addr_req = AddAddressV4::new(Ipv4Addr::new(10, 0, 0, 1));
-        addr_req.set_netmask(24);
-        let Ok(_) = tap.add_addr(addr_req) else {
-            return Err("Could not add an IPv4 address".to_string());
-        };
-
-        let Ok(_) = tap.set_nonblocking(true) else {
-            return Err("Could not enable non-blocking on the device".to_string());
-        };
-
-        let Ok(_) = tap.set_up() else {
-            return Err("Could not enable the device".to_string());
-        };
-
-        Ok(Self {
-            tap,
-            packet_recive_queue: VecDeque::new(),
-        })
-    }
-
-    pub fn get_next_packet(&mut self) -> Option<Vec<u8>> {
-        self.packet_recive_queue.pop_front()
-    }
-
-    pub fn add_packet_font(&mut self, packet: Vec<u8>) {
-        self.packet_recive_queue.push_front(packet);
-    }
-
-    pub fn send_packet(&mut self, packet: Vec<u8>) -> Result<(), String> {
-        let Ok(_) = self.tap.send(packet.iter().as_slice()) else {
-            return Err("Could not send packet!".to_string());
-        };
-        Ok(())
-    }
-
-    pub fn update(&mut self) {
-        let mut recv_buf = [0u8; 65536];
-        match self.tap.recv(&mut recv_buf) {
-            Ok(amount) => {
-                let packet = recv_buf[0..amount].to_vec();
-                self.packet_recive_queue.push_back(packet);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // no packet ready, nothing to do
-            }
-            Err(_) => {
-                // real error — decide how you want to handle/log this
-            }
-        }
-    }
-}
 
 struct NetVirtioConfig {
     mac: [u8; 6],
@@ -130,7 +63,6 @@ impl VirtioDevice for NetVirtio {
         queue_sel: usize,
         queue: &mut crate::devices::virtio::virtio::VirtioQueue,
     ) -> bool {
-        self.tap_device.update();
         match queue_sel {
             0 => {
                 // Recive queue, Where we will send packets into the guest
@@ -198,6 +130,7 @@ impl VirtioDevice for NetVirtio {
     }
 
     fn update(&mut self, _queues: &mut [crate::devices::virtio::virtio::VirtioQueue]) -> bool {
+        self.tap_device.update();
         false
     }
 

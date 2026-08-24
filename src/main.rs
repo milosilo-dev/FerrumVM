@@ -12,12 +12,7 @@ use ferrumvm::{
         serial::{Serial, SerialMode},
         timer::Pit,
         virtio::{
-            devices::{
-                blk::BlkVirtio,
-                counter::CntVirtio,
-                net::{NetVirtio, TAPDevice},
-                rng::RngVirtio,
-            },
+            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
             transports::mmio::MMIOTransport,
         },
     },
@@ -26,6 +21,7 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
+    networking::tap::TAPDevice,
     vm::vm::VirtualMachine,
 };
 
@@ -36,6 +32,14 @@ fn main() {
             libc::dup2(host_log.as_raw_fd(), libc::STDERR_FILENO);
         }
     }
+
+    let tap_device = match TAPDevice::new() {
+        Ok(tap_device) => tap_device,
+        Err(err) => {
+            eprint!("{}\r\n", err);
+            panic!("{}", err);
+        }
+    };
 
     print!("\n\r");
     let firmware_log_file = File::create("ferrum-firmware.log").unwrap();
@@ -56,7 +60,7 @@ fn main() {
         5,
     ));
     let net = Box::new(MMIOTransport::new(
-        Box::new(NetVirtio::new(TAPDevice::new().unwrap())),
+        Box::new(NetVirtio::new(tap_device)),
         2,
         6,
     ));

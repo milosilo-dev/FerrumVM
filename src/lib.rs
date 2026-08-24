@@ -3,5 +3,6 @@ pub mod devices;
 pub mod irq;
 pub mod machine_config;
 pub mod memory_region;
+pub mod networking;
 pub mod vcpu;
 pub mod vm;
