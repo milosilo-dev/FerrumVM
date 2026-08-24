@@ -235,7 +235,7 @@ impl IODevice for Serial {
 
                 let mut out = vec![0; length];
                 for i in 0..length {
-                    let next_byte = self.data.pop_front();
+                    let next_byte = self.data.pop_back();
                     if next_byte.is_some() {
                         out[i] = next_byte.unwrap();
                     }
