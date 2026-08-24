@@ -87,19 +87,22 @@ impl IODevice for Cmos {
                 }
                 CmosRegister::DayOfWeek => {
                     let now = Utc::now();
-                    vec![now.weekday().number_from_monday() as u8; length]
+                    vec![now.weekday().number_from_sunday() as u8; length]
                 }
                 CmosRegister::DayOfMonth => {
-                    let now = Utc::now();
-                    vec![now.day() as u8; length]
+                    let val = Utc::now().day() as u8;
+                    let val = if self.binary { val } else { to_bcd(val) };
+                    vec![val; length]
                 }
                 CmosRegister::Month => {
-                    let now = Utc::now();
-                    vec![now.month() as u8; length]
+                    let val = Utc::now().month() as u8;
+                    let val = if self.binary { val } else { to_bcd(val) };
+                    vec![val; length]
                 }
                 CmosRegister::Year => {
-                    let now = Utc::now();
-                    vec![(now.year() % 100) as u8; length]
+                    let val = (Utc::now().year() % 100) as u8;
+                    let val = if self.binary { val } else { to_bcd(val) };
+                    vec![val; length]
                 }
                 CmosRegister::StatusA => {
                     let a: u8 = ((self.uip as u8) << 7) | (self.oscillator << 4) | self.rate;
