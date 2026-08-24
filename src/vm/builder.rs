@@ -90,7 +90,7 @@ impl VirtualMachine {
             let updated = lvt0.to_le_bytes();
             unsafe {
                 let dst = &mut lapic.regs[APIC_LVT0..APIC_LVT0 + 4] as *mut [i8] as *mut [u8];
-                (&mut *dst).write(&updated).unwrap();
+                (&mut *dst).write_all(&updated).unwrap();
             }
             vcpu.fd.set_lapic(&lapic).expect("set_lapic failed");
         }

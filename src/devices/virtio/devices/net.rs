@@ -1,4 +1,5 @@
-use std::{collections::VecDeque, net::Ipv6Addr};
+use std::{collections::VecDeque, net::{Ipv6Addr, Ipv4Addr}};
+use tappers::AddAddressV4;
 use tappers::Tap;
 
 use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle};
@@ -16,8 +17,14 @@ impl TAPDevice {
         let Ok(mut tap) = Tap::new() else {
             return Err("Tap Could not be created".to_string());
         };
+
         let Ok(_) = tap.add_addr(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff)) else {
             return Err("Could not add an IP Address".to_string());
+        };
+        let mut addr_req = AddAddressV4::new(Ipv4Addr::new(10, 0, 0, 1));
+        addr_req.set_netmask(24);
+        let Ok(_) = tap.add_addr(addr_req) else {
+            return Err("Could not add an IPv4 address".to_string());
         };
 
         let Ok(_) = tap.set_nonblocking(true) else {
@@ -27,7 +34,7 @@ impl TAPDevice {
         let Ok(_) = tap.set_up() else {
             return Err("Could not enable the device".to_string());
         };
-        
+
         Ok(Self {
             tap,
             packet_recive_queue: VecDeque::new(),
@@ -44,7 +51,7 @@ impl TAPDevice {
 
     pub fn send_packet(&mut self, packet: Vec<u8>) -> Result<(), String> {
         let Ok(_) = self.tap.send(packet.iter().as_slice()) else {
-            return Err("Could not send packet!".to_string())
+            return Err("Could not send packet!".to_string());
         };
         Ok(())
     }
@@ -94,13 +101,11 @@ pub struct NetVirtio {
 
 impl NetVirtio {
     pub fn new(tap_device: TAPDevice) -> Self {
-        let mut ret = Self {
+        Self {
             guest_memory: None,
             tap_device,
             config: NetVirtioConfig::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x01], 1),
-        };
-        ret.tap_device.packet_recive_queue.push_back(vec![0x67, 0x67, 0x54, 0x69]);
-        ret
+        }
     }
 }
 
@@ -141,7 +146,7 @@ impl VirtioDevice for NetVirtio {
                     };
 
                     let desc = queue.get_descriptor(guest_memory, head);
-                    let hdr = [0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                    let hdr = [0u8; 12];
 
                     if eth_frame.len() + hdr.len() > desc.len as usize {
                         queue.push_used(guest_memory, head, 0);
@@ -167,7 +172,7 @@ impl VirtioDevice for NetVirtio {
                     eprint!("TX: got descriptor head={}\r\n", head);
                     let desc = queue.get_descriptor(guest_memory, head);
 
-                    let hdr_size = 10u32;
+                    let hdr_size = 12u32;
                     if desc.len < hdr_size {
                         queue.push_used(guest_memory, head, 0);
                         continue;
@@ -194,5 +199,9 @@ impl VirtioDevice for NetVirtio {
 
     fn update(&mut self, _queues: &mut [crate::devices::virtio::virtio::VirtioQueue]) -> bool {
         false
+    }
+
+    fn reset(&mut self) {
+        self.tap_device.packet_recive_queue.clear();
     }
 }

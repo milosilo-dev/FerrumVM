@@ -7,6 +7,7 @@ use std::{
 use crate::devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue};
 
 const SECTOR_SIZE: u64 = 512;
+const MAX_BATCH: usize = 64;
 
 pub struct BlkRequest {
     pub rqst_type: bool,
@@ -103,7 +104,10 @@ impl VirtioDevice for BlkVirtio {
         let mut did_work = false;
         let mut count = 0;
 
-        while let Some(head) = queue.pop_avail(guest_memory) {
+        while count < MAX_BATCH {
+            let Some(head) = queue.pop_avail(guest_memory) else {
+                break;
+            };
             count += 1;
             let header = queue.get_descriptor(guest_memory, head);
 
@@ -189,10 +193,6 @@ impl VirtioDevice for BlkVirtio {
             queue.push_used(guest_memory, head, data_section.len);
 
             did_work = true;
-        }
-
-        if count > 10 {
-            eprint!("blk: batch {} requests\r\n", count);
         }
 
         did_work

@@ -32,6 +32,12 @@ impl IRQHandler {
     }
 
     pub fn trigger_irq(&mut self, irq: IRQCommand) {
+        if irq.irq_line == 6 {
+            eprint!(
+                "Interrupt from netio device, value: {}.\r\n",
+                irq.value
+            );
+        }
         self.commands.push_back(irq);
     }
 
