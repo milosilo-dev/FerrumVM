@@ -1,0 +1,103 @@
+use crate::{
+    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle},
+    platform::shared_folder::{
+        fuse::{FUSE_FORGET, FuseInHeader},
+        shared_folder::SharedFolder,
+    },
+};
+
+pub struct FsVirtioConfig {
+    tag: Vec<u8>,
+    request_queues: u32,
+}
+
+impl FsVirtioConfig {
+    pub fn new(tag: &str, request_queues: u32) -> Self {
+        let mut tag = tag.as_bytes().to_vec();
+        tag.resize(36, 0x0);
+        Self {
+            tag: tag,
+            request_queues,
+        }
+    }
+
+    pub fn to_bytes(&self, length: usize) -> Vec<u8> {
+        let mut buf = self.tag.clone();
+        buf.extend(self.request_queues.to_le_bytes());
+
+        buf.resize(length, 0);
+
+        buf
+    }
+}
+
+pub struct FsVirtio {
+    guest_memory: Option<VirtioGuestMemoryHandle>,
+    config: FsVirtioConfig,
+    fuse_device: SharedFolder,
+}
+
+impl FsVirtio {
+    pub fn new(name: &str, fuse_device: SharedFolder) -> Self {
+        Self {
+            guest_memory: None,
+            config: FsVirtioConfig::new(name, 1),
+            fuse_device,
+        }
+    }
+}
+
+impl VirtioDevice for FsVirtio {
+    fn virtio_type(&self) -> u32 {
+        0x1A
+    }
+
+    fn features(&self) -> u64 {
+        0x0
+    }
+
+    fn pass_guest_memory(&mut self, guest_memory: VirtioGuestMemoryHandle) {
+        self.guest_memory = Some(guest_memory);
+    }
+
+    fn tick(
+        &mut self,
+        queue_sel: usize,
+        queue: &mut crate::devices::virtio::virtio::VirtioQueue,
+    ) -> bool {
+        let Some(guest_memory) = self.guest_memory.as_mut() else {
+            return false;
+        };
+
+        match queue_sel {
+            0 => {
+                // Hiprio
+                while let Some(head) = queue.pop_avail(guest_memory) {
+                    let fuse_in_descriptor = queue.get_descriptor(guest_memory, head);
+                    let mut fuse_in_bytes = vec![0u8; fuse_in_descriptor.len as usize];
+                    guest_memory.read_guest_memory(fuse_in_descriptor.addr, &mut fuse_in_bytes);
+                    let fuse_in_header = FuseInHeader::new(fuse_in_bytes);
+
+                    match fuse_in_header.opcode {
+                        FUSE_FORGET => {}
+                        _ => {}
+                    }
+                }
+            }
+            1 => {
+                // Request queue
+            }
+            _ => {}
+        }
+
+        false
+    }
+
+    fn read_config(&self, length: usize) -> Vec<u8> {
+        self.config.to_bytes(length)
+    }
+
+    fn update(&mut self, _queues: &mut [crate::devices::virtio::virtio::VirtioQueue]) -> bool {
+        false
+    }
+}

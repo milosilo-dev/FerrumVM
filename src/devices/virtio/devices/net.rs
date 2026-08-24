@@ -1,6 +1,6 @@
 use crate::{
     devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle},
-    networking::tap::TAPDevice,
+    platform::networking::tap::TAPDevice,
 };
 
 const VIRTIO_NET_F_MAC: u8 = 5;

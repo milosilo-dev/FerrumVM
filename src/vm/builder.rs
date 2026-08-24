@@ -73,10 +73,6 @@ impl VirtualMachine {
 
         let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry, &mut cpuid);
 
-        // Unmask LAPIC LVT0 (ExtINT) so PIC interrupts from set_irq_line reach the CPU.
-        // KVM resets LVT0 to 0x10700 (ExtINT + masked). Without unmasking, every device
-        // interrupt delivered through the PIC (virtio-blk, virtio-net, serial, keyboard)
-        // is silently dropped.
         {
             use std::io::Write;
             const APIC_LVT0: usize = 0x350;

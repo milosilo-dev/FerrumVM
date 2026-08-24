@@ -78,11 +78,19 @@ The total list of devices that I support at the moment is:
 - Serial device for communication
 - Timer chip
 - VirtIO BLK device (disk)
+- VirtIO NET device (networking)
 - VirtIO RNG device (randomness)
 
 VirtIO is a protocol which allows devices to communicate through shared sections of memory rather than relying solely on the MMIO and I/O methods discussed earlier. I use it in FerrumVM for more complicated devices, such as block devices, which need to handle large amounts of shared memory.
 
 FerrumVM implements VirtIO devices using virtqueues, allowing the guest and host to exchange buffers through shared guest memory rather than requiring an individual VM exit for every byte of I/O.
+
+## Networking
+As previously stated, networking in ferrum is done using the virtio-net protocol because its much simpler than emulating a real hadrware device. The networking device relys on a TAP device from the host kernel which allows from comuniction between host and guest at level 2 of the TCP-IP protocol.
+
+The ethernet frames are moved back and forth on two seperate virtio queues, one for tx and one for rx. This allows for effishent transport of the frames between the guest and host.
+
+On both the guest and host, there is setup that has too be done, like tying the network interface to an IP address and setting up packet forwarding from the host to the TAP Device.
 
 ## The Custom firmware
 
@@ -150,6 +158,8 @@ I also learned a lot of new methods for researching these topics, which are ofte
 
 One resource that was tremendously helpful during the firmware stage of the project was the [UEFI specification](https://uefi.org/specs/UEFI/2.11/), which provided me with information about practically every function in the UEFI system table.
 
+Another resource that I drew on alot was the [Virtio specification](https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.html), which I used to ensure I properly implement the devices so that they will play well with diffrent operating system drivers.
+
 ## Current Status
 
 FerrumVM is currently capable of:
@@ -164,10 +174,12 @@ FerrumVM is currently capable of:
 - [x] Providing an Alpine Linux userspace
 - [x] VirtIO block device
 - [x] VirtIO RNG
-- [ ] VirtIO Net
+- [x] VirtIO Net
+- [ ] VirtIO FS
 - [ ] VirtIO Gpu
 - [ ] VirtIO Console
 - [ ] PCI Support
+- [ ] Multi-Core
 
 ## AI Usage
 

@@ -21,7 +21,7 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
-    networking::tap::TAPDevice,
+    platform::networking::tap::TAPDevice,
     vm::vm::VirtualMachine,
 };
 

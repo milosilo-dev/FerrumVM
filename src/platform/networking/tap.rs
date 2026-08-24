@@ -6,7 +6,7 @@ use std::{
 use tappers::AddAddressV4;
 use tappers::{Interface, Tap};
 
-use crate::networking::firewall::setup_ferrumvm_firewall;
+use crate::platform::networking::firewall::setup_ferrumvm_firewall;
 
 const IFACE_NAME: &str = "ferrum-tap0";
 
@@ -17,7 +17,7 @@ pub struct TAPDevice {
 
 impl TAPDevice {
     pub fn new() -> Result<Self, String> {
-        if !Self::ensure_ip_forwarding(){
+        if !Self::ensure_ip_forwarding() {
             eprint!("Could not enable ip forwading\r\n");
         }
         let fw_res = setup_ferrumvm_firewall(IFACE_NAME);
