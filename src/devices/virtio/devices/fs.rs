@@ -1,8 +1,6 @@
 use crate::{
-    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle},
-    platform::shared_folder::{
-        fuse::{FUSE_FORGET, FuseInHeader},
-        shared_folder::SharedFolder,
+    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtqDesc}, platform::shared_folder::{
+        fuse::{FUSE_FORGET, FuseInHeader, FuseOutHeader}, shared_folder::SharedFolder,
     },
 };
 
@@ -69,6 +67,7 @@ impl VirtioDevice for FsVirtio {
             return false;
         };
 
+        let mut did_work: bool = false;
         match queue_sel {
             0 => {
                 // Hiprio
@@ -76,21 +75,64 @@ impl VirtioDevice for FsVirtio {
                     let fuse_in_descriptor = queue.get_descriptor(guest_memory, head);
                     let mut fuse_in_bytes = vec![0u8; fuse_in_descriptor.len as usize];
                     guest_memory.read_guest_memory(fuse_in_descriptor.addr, &mut fuse_in_bytes);
-                    let fuse_in_header = FuseInHeader::new(fuse_in_bytes);
+                    let (fuse_in_header, _) = FuseInHeader::new(fuse_in_bytes);
 
                     match fuse_in_header.opcode {
-                        FUSE_FORGET => {}
+                        FUSE_FORGET => {
+                            self.fuse_device.forget(&fuse_in_header);
+                        }
                         _ => {}
                     }
+
+                    queue.push_used(guest_memory, head, 0);
+                    did_work = true;
                 }
             }
             1 => {
                 // Request queue
+                while let Some(head) = queue.pop_avail(guest_memory) {
+                    let fuse_in_descriptor = queue.get_descriptor(guest_memory, head);
+                    let mut fuse_in_bytes = vec![0u8; fuse_in_descriptor.len as usize];
+                    guest_memory.read_guest_memory(fuse_in_descriptor.addr, &mut fuse_in_bytes);
+                    let (fuse_in_header, fuse_data) = FuseInHeader::new(fuse_in_bytes);
+
+                    let mut out_desc: VirtqDesc = queue.get_descriptor(guest_memory, fuse_in_descriptor.next);
+                    while (out_desc.flags & 2) != 1 {
+                        out_desc = queue.get_descriptor(guest_memory, out_desc.next);
+                    }
+
+                    let reply_bytes = match self.fuse_device.dispatch(&fuse_in_header, &fuse_data) {
+                        Ok(payload) => {
+                            let out_header = FuseOutHeader {
+                                len: (FuseOutHeader::length() + payload.len()) as u32,
+                                error: 0,
+                                unique: fuse_in_header.unique,
+                            };
+                            let mut bytes = out_header.to_bytes();
+                            bytes.extend(payload);
+                            bytes
+                        }
+                        Err(errno) => {
+                            let out_header = FuseOutHeader {
+                                len: FuseOutHeader::length() as u32,
+                                error: -errno, // FUSE wants negative errno
+                                unique: fuse_in_header.unique,
+                            };
+                            out_header.to_bytes()
+                        }
+                    };
+
+                    let write_len = reply_bytes.len().min(out_desc.len as usize);
+                    guest_memory.write_guest_memory(out_desc.addr, &reply_bytes[..write_len]);
+
+                    queue.push_used(guest_memory, head, 0);
+                    did_work = true;
+                }
             }
             _ => {}
         }
 
-        false
+        did_work
     }
 
     fn read_config(&self, length: usize) -> Vec<u8> {

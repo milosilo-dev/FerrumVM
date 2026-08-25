@@ -11,9 +11,9 @@ pub struct FuseInHeader {
 }
 
 impl FuseInHeader {
-    pub fn new(bytes: Vec<u8>) -> Self {
+    pub fn new(bytes: Vec<u8>) -> (Self, Vec<u8>) {
         let input = &mut bytes.as_slice();
-        Self {
+        (Self {
             len: Self::read_le_u32(input),
             opcode: Self::read_le_u32(input),
             unique: Self::read_le_u64(input),
@@ -22,7 +22,7 @@ impl FuseInHeader {
             gid: Self::read_le_u32(input),
             pid: Self::read_le_u32(input),
             padding: Self::read_le_u32(input),
-        }
+        }, input.to_vec())
     }
 
     fn read_le_u32(input: &mut &[u8]) -> u32 {
@@ -46,31 +46,23 @@ pub struct FuseOutHeader {
 }
 
 impl FuseOutHeader {
-    pub fn new(bytes: Vec<u8>) -> Self {
-        let input = &mut bytes.as_slice();
+    pub fn new(len: u32, error: i32, unique: u64) -> Self {
         Self {
-            len: Self::read_le_u32(input),
-            error: Self::read_le_i32(input),
-            unique: Self::read_le_u64(input),
+            len,
+            error,
+            unique,
         }
     }
 
-    fn read_le_u32(input: &mut &[u8]) -> u32 {
-        let (int_bytes, rest) = input.split_at(size_of::<u32>());
-        *input = rest;
-        u32::from_le_bytes(int_bytes.try_into().unwrap())
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = self.len.to_le_bytes().to_vec();
+        buf.extend(self.error.to_le_bytes().iter());
+        buf.extend(self.unique.to_le_bytes().iter());
+        buf
     }
 
-    fn read_le_i32(input: &mut &[u8]) -> i32 {
-        let (int_bytes, rest) = input.split_at(size_of::<i32>());
-        *input = rest;
-        i32::from_le_bytes(int_bytes.try_into().unwrap())
-    }
-
-    fn read_le_u64(input: &mut &[u8]) -> u64 {
-        let (int_bytes, rest) = input.split_at(size_of::<u64>());
-        *input = rest;
-        u64::from_le_bytes(int_bytes.try_into().unwrap())
+    pub fn length() -> usize {
+        std::mem::size_of::<u32>() + std::mem::size_of::<i32>() + std::mem::size_of::<u64>()
     }
 }
 
@@ -125,3 +117,5 @@ pub const FUSE_SYNCFS: u32 = 50;
 pub const FUSE_TMPFILE: u32 = 51;
 pub const FUSE_STATX: u32 = 52;
 pub const FUSE_COPY_FILE_RANGE_64: u32 = 53;
+
+pub const FUSE_ROOT_ID: u64 = 1;
