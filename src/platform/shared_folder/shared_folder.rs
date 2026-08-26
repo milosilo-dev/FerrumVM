@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
-use crate::platform::shared_folder::fuse::{FuseInHeader, FUSE_LOOKUP, FUSE_GETATTR, FUSE_READ, FUSE_ROOT_ID};
+use crate::platform::shared_folder::fuse::{
+    FUSE_CREATE, FUSE_DESTROY, FUSE_GETATTR, FUSE_INIT, FUSE_LOOKUP, FUSE_MKDIR, FUSE_MKNOD, FUSE_READ, FUSE_ROOT_ID, FUSE_SYMLINK, FuseInHeader, FuseInitIn,
+};
 
 pub struct SharedFolder {
     root: PathBuf,
@@ -27,9 +29,15 @@ impl SharedFolder {
 
     pub fn dispatch(&mut self, header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
         match header.opcode {
+            FUSE_INIT => self.init(header, body),
+            FUSE_DESTROY => self.destroy(header),
             FUSE_LOOKUP => self.lookup(header, body),
-            FUSE_GETATTR => self.getattr(header),
+            FUSE_GETATTR => self.get_attr(header),
             FUSE_READ => self.read(header, body),
+            FUSE_MKNOD => self.make_node(header, body),
+            FUSE_MKDIR => self.make_directory(header, body),
+            FUSE_SYMLINK => self.make_symlink(header, body),
+            FUSE_CREATE => self.create(header, body),
             _ => Err(libc::ENOSYS),
         }
     }
@@ -38,15 +46,78 @@ impl SharedFolder {
         self.inodes.remove(&header.nodeid);
     }
 
-    pub fn lookup(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+    fn init(&mut self, _header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
+        let (init_data, body) = FuseInitIn::new(body.to_vec());
+        
+
         Ok(vec![])
     }
 
-    pub fn getattr(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
+    fn destroy(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
         Ok(vec![])
     }
-    
-    pub fn read(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+
+    fn make_node(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn make_directory(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn make_symlink(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn create(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn open(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn release(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn open_dir(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn release_dir(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn lookup(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn get_attr(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn set_attr(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn flush(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn fsync(&mut self, _header: &FuseInHeader) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn read(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn write(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+        Ok(vec![])
+    }
+
+    fn read_dir(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
         Ok(vec![])
     }
 }

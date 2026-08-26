@@ -1,3 +1,15 @@
+fn read_le_u32(input: &mut &[u8]) -> u32 {
+    let (int_bytes, rest) = input.split_at(size_of::<u32>());
+    *input = rest;
+    u32::from_le_bytes(int_bytes.try_into().unwrap())
+}
+
+fn read_le_u64(input: &mut &[u8]) -> u64 {
+    let (int_bytes, rest) = input.split_at(size_of::<u64>());
+    *input = rest;
+    u64::from_le_bytes(int_bytes.try_into().unwrap())
+}
+
 #[repr(C)]
 pub struct FuseInHeader {
     pub len: u32,
@@ -13,28 +25,19 @@ pub struct FuseInHeader {
 impl FuseInHeader {
     pub fn new(bytes: Vec<u8>) -> (Self, Vec<u8>) {
         let input = &mut bytes.as_slice();
-        (Self {
-            len: Self::read_le_u32(input),
-            opcode: Self::read_le_u32(input),
-            unique: Self::read_le_u64(input),
-            nodeid: Self::read_le_u64(input),
-            uid: Self::read_le_u32(input),
-            gid: Self::read_le_u32(input),
-            pid: Self::read_le_u32(input),
-            padding: Self::read_le_u32(input),
-        }, input.to_vec())
-    }
-
-    fn read_le_u32(input: &mut &[u8]) -> u32 {
-        let (int_bytes, rest) = input.split_at(size_of::<u32>());
-        *input = rest;
-        u32::from_le_bytes(int_bytes.try_into().unwrap())
-    }
-
-    fn read_le_u64(input: &mut &[u8]) -> u64 {
-        let (int_bytes, rest) = input.split_at(size_of::<u64>());
-        *input = rest;
-        u64::from_le_bytes(int_bytes.try_into().unwrap())
+        (
+            Self {
+                len: read_le_u32(input),
+                opcode: read_le_u32(input),
+                unique: read_le_u64(input),
+                nodeid: read_le_u64(input),
+                uid: read_le_u32(input),
+                gid: read_le_u32(input),
+                pid: read_le_u32(input),
+                padding: read_le_u32(input),
+            },
+            input.to_vec(),
+        )
     }
 }
 
@@ -47,11 +50,7 @@ pub struct FuseOutHeader {
 
 impl FuseOutHeader {
     pub fn new(len: u32, error: i32, unique: u64) -> Self {
-        Self {
-            len,
-            error,
-            unique,
-        }
+        Self { len, error, unique }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -63,6 +62,102 @@ impl FuseOutHeader {
 
     pub fn length() -> usize {
         std::mem::size_of::<u32>() + std::mem::size_of::<i32>() + std::mem::size_of::<u64>()
+    }
+}
+
+#[repr(C)]
+pub struct FuseInitIn {
+    pub major: u32,
+    pub minor: u32,
+    pub max_readahead: u32,
+    pub flags: u32,
+    pub flags2: u32,
+    pub unused: [u32; 11],
+}
+
+impl FuseInitIn {
+    pub fn new(bytes: Vec<u8>) -> (Self, Vec<u8>) {
+        let input = &mut bytes.as_slice();
+        (
+            Self {
+                major: read_le_u32(input),
+                minor: read_le_u32(input),
+                max_readahead: read_le_u32(input),
+                flags: read_le_u32(input),
+                flags2: read_le_u32(input),
+                unused: [0u32; 11],
+            },
+            input.to_vec(),
+        )
+    }
+}
+
+#[repr(C)]
+pub struct FuseInitOut {
+    pub major: u32,
+    pub minor: u32,
+    pub max_readahead: u32,
+    pub flags: u32,
+    pub flags2: u32,
+    pub max_background: u16,
+    pub congestion_threshold: u16,
+    pub max_write: u32,
+    pub time_gran: u32,
+    pub max_pages: u16,
+    pub map_alignment: u16,
+}
+
+impl FuseInitOut {
+    pub fn new(
+        major: u32,
+        minor: u32,
+        max_readahead: u32,
+        flags: u32,
+        flags2: u32,
+        max_background: u16,
+        congestion_threshold: u16,
+        max_write: u32,
+        time_gran: u32,
+        max_pages: u16,
+        map_alignment: u16,
+    ) -> Self {
+        Self {
+            major,
+            minor,
+            max_readahead,
+            flags,
+            flags2,
+            max_background,
+            congestion_threshold,
+            max_write,
+            time_gran,
+            max_pages,
+            map_alignment,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = self.major.to_le_bytes().to_vec();
+        buf.extend(self.minor.to_le_bytes().iter());
+        buf.extend(self.max_readahead.to_le_bytes().iter());
+        buf.extend(self.flags.to_le_bytes().iter());
+        buf.extend(self.flags2.to_le_bytes().iter());
+        buf.extend(self.max_background.to_le_bytes().iter());
+        buf.extend(self.congestion_threshold.to_le_bytes().iter());
+        buf.extend(self.max_write.to_le_bytes().iter());
+        buf.extend(self.time_gran.to_le_bytes().iter());
+        buf.extend(self.max_pages.to_le_bytes().iter());
+        buf.extend(self.map_alignment.to_le_bytes().iter());
+        buf.extend([0u8; std::mem::size_of::<u32>() * 8]); // Unused bytes
+        buf
+    }
+
+    pub fn length() -> usize {
+        std::mem::size_of::<u32>() * 5
+            + std::mem::size_of::<u16>() * 2
+            + std::mem::size_of::<u32>() * 2
+            + std::mem::size_of::<u16>() * 2
+            + std::mem::size_of::<u32>() * 8
     }
 }
 
