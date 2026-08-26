@@ -112,7 +112,6 @@ impl VirtioDevice for NetVirtio {
 
                     let mut eth_frame: Vec<u8> = vec![0; (desc.len - hdr_size) as usize];
                     guest_memory.read_guest_memory(desc.addr + hdr_size as u64, &mut eth_frame);
-                    eprint!("Queue sent: {:X?}\r\n", eth_frame);
                     let _ = self.tap_device.send_packet(eth_frame);
 
                     queue.push_used(guest_memory, head, desc.len);

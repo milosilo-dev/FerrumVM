@@ -1,28 +1,18 @@
 use std::{
-    fs::{self, File},
-    os::fd::AsRawFd,
+    fs::{self, File}, os::fd::AsRawFd, path::PathBuf,
 };
 
 use crossterm::terminal::disable_raw_mode;
 
 use ferrumvm::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    devices::{
-        cmos::Cmos,
-        serial::{Serial, SerialMode},
-        timer::Pit,
-        virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, net::NetVirtio, rng::RngVirtio},
-            transports::mmio::MMIOTransport,
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, devices::{
+        cmos::Cmos, serial::{Serial, SerialMode}, timer::Pit, virtio::{
+            devices::{blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, net::NetVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport,
         },
-    },
-    irq::map::IrqMap,
-    machine_config::{
+    }, irq::map::IrqMap, machine_config::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
-    },
-    platform::networking::tap::TAPDevice,
-    vm::vm::VirtualMachine,
+    }, platform::{networking::tap::TAPDevice, shared_folder::shared_folder::SharedFolder}, vm::vm::VirtualMachine,
 };
 
 fn main() {
@@ -64,6 +54,11 @@ fn main() {
         2,
         6,
     ));
+    let fuse = Box::new(MMIOTransport::new(
+        Box::new(FsVirtio::new("Home", SharedFolder::new(PathBuf::from("/home/miles/")))),
+        2,
+        7,
+    ));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
@@ -90,6 +85,7 @@ fn main() {
             MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
             MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
             MMIODeviceRegion::new(0x20003000..=0x20003FFF, net),
+            MMIODeviceRegion::new(0x20004000..=0x20004FFF, fuse),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here

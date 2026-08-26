@@ -1,7 +1,7 @@
 use crate::{
     devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtqDesc},
     platform::shared_folder::{
-        fuse::{FUSE_FORGET, FuseInHeader, FuseOutHeader},
+        fuse::{opcode::FUSE_FORGET, header::{FuseInHeader, FuseOutHeader}},
         shared_folder::SharedFolder,
     },
 };
@@ -100,7 +100,7 @@ impl VirtioDevice for FsVirtio {
 
                     let mut out_desc: VirtqDesc =
                         queue.get_descriptor(guest_memory, fuse_in_descriptor.next);
-                    while (out_desc.flags & 2) != 1 {
+                    while out_desc.flags & 2 == 0 {
                         out_desc = queue.get_descriptor(guest_memory, out_desc.next);
                     }
 

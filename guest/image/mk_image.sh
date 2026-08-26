@@ -23,8 +23,8 @@ mkdir -p rootfs/etc/network/if-post-down.d
 
 ./initramfs/make_initramfs.sh
 
-# 1. Create empty disk (64MB)
-dd if=/dev/zero of=$IMG bs=1M count=128
+# 1. Create empty disk
+dd if=/dev/zero of=$IMG bs=1M count=1024
 
 # 2. Create GPT + partition
 parted $IMG --script mklabel gpt

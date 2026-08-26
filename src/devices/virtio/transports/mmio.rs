@@ -90,10 +90,6 @@ impl MMIODevice for MMIOTransport {
                 } else {
                     (features >> 32) as u32
                 };
-                eprint!(
-                    "FEAT READ: sel={} val=0x{:X} status=0x{:X}\r\n",
-                    self.device_features_sel, val, self.status
-                );
                 val
             }
             0x034 => QUEUE_NUM_MAX,
@@ -119,10 +115,6 @@ impl MMIODevice for MMIOTransport {
         match addr {
             0x014 => {
                 self.device_features_sel = read_u32_from_data(data);
-                eprint!(
-                    "DEV_FEATURES_SEL write: sel={}\r\n",
-                    self.device_features_sel
-                );
             }
             0x020 => {
                 let val = read_u32_from_data(data) as u64;
@@ -142,10 +134,6 @@ impl MMIODevice for MMIOTransport {
                 let sel = read_u32_from_data(data) as usize;
                 if sel < self.queues.len() {
                     self.queue_sel = sel;
-                    eprint!(
-                        "QUEUE_SEL write: sel={} status=0x{:X}\r\n",
-                        sel, self.status
-                    );
                 }
             }
             0x038 => self.queues[self.queue_sel].size = u16::from_le_bytes([data[0], data[1]]),
@@ -155,10 +143,6 @@ impl MMIODevice for MMIOTransport {
                 if !was_ready && data[0] != 0 {
                     self.queues[self.queue_sel].last_avail_idx = 0;
                 }
-                eprint!(
-                    "QUEUE READY write: sel={} val={} status=0x{:X}\r\n",
-                    self.queue_sel, self.queues[self.queue_sel].ready, self.status
-                );
             }
             0x050 => {
                 let queue_idx = read_u32_from_data(data) as usize;
@@ -183,11 +167,6 @@ impl MMIODevice for MMIOTransport {
             }
             0x070 => {
                 let val = read_u32_from_data(data);
-                eprint!(
-                    "STATUS write: val=0x{:X} device={}\r\n",
-                    val,
-                    self.device.virtio_type()
-                );
                 if val == 0 {
                     for q in &mut self.queues {
                         *q = VirtioQueue::new();
