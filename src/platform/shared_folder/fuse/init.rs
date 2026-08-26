@@ -112,21 +112,15 @@ pub fn truncate_init_out(out: &FuseInitOut, len: usize) -> Vec<u8> {
     bytes
 }
 
-pub const FUSE_COMPAT_INIT_OUT_SIZE: usize =
-    size_of::<u32>() * 2;
+pub const FUSE_COMPAT_INIT_OUT_SIZE: usize = size_of::<u32>() * 2;
 
 pub const FUSE_COMPAT_22_INIT_OUT_SIZE: usize =
-    size_of::<u32>() * 2
-    + size_of::<u32>()
-    + size_of::<u32>();
+    size_of::<u32>() * 2 + size_of::<u32>() + size_of::<u32>();
 
 pub const FUSE_INIT_OUT_SIZE_PRE_MAX_PAGES: usize =
-    FuseInitOut::length()
-        - size_of::<u16>() * 2
-        - size_of::<u32>() * 8;
+    FuseInitOut::length() - size_of::<u16>() * 2 - size_of::<u32>() * 8;
 
-pub const FUSE_INIT_OUT_SIZE_V0: usize =
-    FUSE_COMPAT_INIT_OUT_SIZE;
+pub const FUSE_INIT_OUT_SIZE_V0: usize = FUSE_COMPAT_INIT_OUT_SIZE;
 
 pub const MAX_READAHEAD: u32 = 128 * 1024;
 pub const MAX_BACKGROUND: u16 = 16;

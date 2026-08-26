@@ -1,6 +1,23 @@
-use std::{collections::HashMap, fs::File, path::PathBuf, os::unix::fs::{MetadataExt, DirEntryExt}};
+use std::{
+    collections::HashMap,
+    fs::File,
+    os::unix::fs::{DirEntryExt, MetadataExt},
+    path::PathBuf,
+};
 
-use crate::platform::shared_folder::fuse::{header::FuseInHeader, init::{CONGESTION_THRESHOLD, FUSE_INIT_OUT_SIZE_PRE_MAX_PAGES, FUSE_INIT_OUT_SIZE_V0, FuseInitIn, FuseInitOut, MAX_BACKGROUND, MAX_READAHEAD, MAX_WRITE, TIME_GRAN_NS, truncate_init_out}, opcode::{FUSE_BATCH_FORGET, FUSE_CREATE, FUSE_DESTROY, FUSE_FLUSH, FUSE_FSYNC, FUSE_GETATTR, FUSE_INIT, FUSE_INTERRUPT, FUSE_LOOKUP, FUSE_MKDIR, FUSE_MKNOD, FUSE_OPEN, FUSE_OPENDIR, FUSE_READ, FUSE_READDIR, FUSE_READLINK, FUSE_RELEASE, FUSE_RELEASEDIR, FUSE_RENAME, FUSE_ROOT_ID, FUSE_RMDIR, FUSE_SETATTR, FUSE_STATFS, FUSE_SYMLINK, FUSE_UNLINK, FUSE_WRITE}};
+use crate::platform::shared_folder::fuse::{
+    header::FuseInHeader,
+    init::{
+        CONGESTION_THRESHOLD, FUSE_INIT_OUT_SIZE_PRE_MAX_PAGES, FUSE_INIT_OUT_SIZE_V0, FuseInitIn,
+        FuseInitOut, MAX_BACKGROUND, MAX_READAHEAD, MAX_WRITE, TIME_GRAN_NS, truncate_init_out,
+    },
+    opcode::{
+        FUSE_BATCH_FORGET, FUSE_CREATE, FUSE_DESTROY, FUSE_FLUSH, FUSE_FSYNC, FUSE_GETATTR,
+        FUSE_INIT, FUSE_INTERRUPT, FUSE_LOOKUP, FUSE_MKDIR, FUSE_MKNOD, FUSE_OPEN, FUSE_OPENDIR,
+        FUSE_READ, FUSE_READDIR, FUSE_READLINK, FUSE_RELEASE, FUSE_RELEASEDIR, FUSE_RENAME,
+        FUSE_RMDIR, FUSE_ROOT_ID, FUSE_SETATTR, FUSE_STATFS, FUSE_SYMLINK, FUSE_UNLINK, FUSE_WRITE,
+    },
+};
 
 pub struct SharedFolder {
     root: PathBuf,
@@ -31,7 +48,10 @@ impl SharedFolder {
     }
 
     pub fn dispatch(&mut self, header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
-        eprintln!("FUSE: opcode={} nodeid={} unique={}", header.opcode, header.nodeid, header.unique);
+        eprintln!(
+            "FUSE: opcode={} nodeid={} unique={}",
+            header.opcode, header.nodeid, header.unique
+        );
         let result = match header.opcode {
             FUSE_INIT => self.init(header, body),
             FUSE_DESTROY => self.destroy(header),
@@ -58,7 +78,10 @@ impl SharedFolder {
             FUSE_READLINK => self.readlink(header, body),
             FUSE_INTERRUPT => self.interrupt(header, body),
             FUSE_BATCH_FORGET => self.batch_forget(header, body),
-            _ => { eprintln!("FUSE: unsupported opcode {}", header.opcode); Err(libc::ENOSYS) }
+            _ => {
+                eprintln!("FUSE: unsupported opcode {}", header.opcode);
+                Err(libc::ENOSYS)
+            }
         };
         if let Err(e) = &result {
             eprintln!("FUSE: opcode={} failed with errno={}", header.opcode, e);
@@ -71,9 +94,16 @@ impl SharedFolder {
     }
 
     fn init(&mut self, _header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
-        eprintln!("FUSE_INIT: body len={}, first 32 bytes: {:02x?}", body.len(), &body[..body.len().min(32)]);
+        eprintln!(
+            "FUSE_INIT: body len={}, first 32 bytes: {:02x?}",
+            body.len(),
+            &body[..body.len().min(32)]
+        );
         let (req, _rest) = FuseInitIn::new(body.to_vec());
-        eprintln!("FUSE_INIT: major={} minor={} max_readahead={} flags=0x{:x}", req.major, req.minor, req.max_readahead, req.flags);
+        eprintln!(
+            "FUSE_INIT: major={} minor={} max_readahead={} flags=0x{:x}",
+            req.major, req.minor, req.max_readahead, req.flags
+        );
 
         if req.major != FUSE_KERNEL_VERSION {
             if req.major > FUSE_KERNEL_VERSION {
@@ -129,7 +159,11 @@ impl SharedFolder {
         let mode = u32::from_le_bytes(body[0..4].try_into().map_err(|_| libc::EIO)?);
 
         let name_start = 16; // after FuseMknodIn (mode + rdev + umask + padding)
-        let name_end = body[name_start..].iter().position(|&b| b == 0).unwrap_or(body.len() - name_start) + name_start;
+        let name_end = body[name_start..]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(body.len() - name_start)
+            + name_start;
         let name = std::str::from_utf8(&body[name_start..name_end]).map_err(|_| libc::EIO)?;
 
         let parent_path = self.inodes.get(&header.nodeid).ok_or(libc::ENOENT)?;
@@ -158,7 +192,11 @@ impl SharedFolder {
         let mode = u32::from_le_bytes(body[0..4].try_into().map_err(|_| libc::EIO)?);
 
         let name_start = 8; // after FuseMkdirIn (mode + umask)
-        let name_end = body[name_start..].iter().position(|&b| b == 0).unwrap_or(body.len() - name_start) + name_start;
+        let name_end = body[name_start..]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(body.len() - name_start)
+            + name_start;
         let name = std::str::from_utf8(&body[name_start..name_end]).map_err(|_| libc::EIO)?;
 
         let parent_path = self.inodes.get(&header.nodeid).ok_or(libc::ENOENT)?;
@@ -172,7 +210,10 @@ impl SharedFolder {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&child_path, std::fs::Permissions::from_mode(mode & 0o7777));
+            let _ = std::fs::set_permissions(
+                &child_path,
+                std::fs::Permissions::from_mode(mode & 0o7777),
+            );
         }
 
         let nodeid = self.next_inode;
@@ -185,10 +226,16 @@ impl SharedFolder {
 
     fn make_symlink(&mut self, header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
         let name_end = body.iter().position(|&b| b == 0).unwrap_or(body.len());
-        let link_end = body[name_end + 1..].iter().position(|&b| b == 0).unwrap_or(body.len() - name_end - 1) + name_end + 1;
+        let link_end = body[name_end + 1..]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(body.len() - name_end - 1)
+            + name_end
+            + 1;
 
         let name = std::str::from_utf8(&body[..name_end]).map_err(|_| libc::EIO)?;
-        let link_target = std::str::from_utf8(&body[name_end + 1..link_end]).map_err(|_| libc::EIO)?;
+        let link_target =
+            std::str::from_utf8(&body[name_end + 1..link_end]).map_err(|_| libc::EIO)?;
 
         let parent_path = self.inodes.get(&header.nodeid).ok_or(libc::ENOENT)?;
         let child_path = parent_path.join(name);
@@ -198,7 +245,8 @@ impl SharedFolder {
         let nodeid = self.next_inode;
         self.next_inode += 1;
         self.inodes.insert(nodeid, child_path);
-        let meta = std::fs::symlink_metadata(self.inodes.get(&nodeid).unwrap()).map_err(|_| libc::EIO)?;
+        let meta =
+            std::fs::symlink_metadata(self.inodes.get(&nodeid).unwrap()).map_err(|_| libc::EIO)?;
 
         Ok(build_entry_out(nodeid, &meta))
     }
@@ -207,7 +255,11 @@ impl SharedFolder {
         let flags = u32::from_le_bytes(body[0..4].try_into().map_err(|_| libc::EIO)?);
 
         let name_start = 16; // after FuseCreateIn (flags + mode + umask + padding)
-        let name_end = body[name_start..].iter().position(|&b| b == 0).unwrap_or(body.len() - name_start) + name_start;
+        let name_end = body[name_start..]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(body.len() - name_start)
+            + name_start;
         let name = std::str::from_utf8(&body[name_start..name_end]).map_err(|_| libc::EIO)?;
 
         let parent_path = self.inodes.get(&header.nodeid).ok_or(libc::ENOENT)?;
@@ -307,7 +359,10 @@ impl SharedFolder {
 
         if valid & FATTR_SIZE != 0 {
             let size = u64::from_le_bytes(body[16..24].try_into().map_err(|_| libc::EIO)?);
-            let file = std::fs::OpenOptions::new().write(true).open(path).map_err(|_| libc::EIO)?;
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .map_err(|_| libc::EIO)?;
             file.set_len(size).map_err(|_| libc::EIO)?;
         }
 
@@ -316,7 +371,8 @@ impl SharedFolder {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o7777));
+                let _ =
+                    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o7777));
             }
         }
 
@@ -332,7 +388,9 @@ impl SharedFolder {
         let fh = u64::from_le_bytes(body[0..8].try_into().map_err(|_| libc::EIO)?);
         if let Some(file) = self.open_files.get(&fh) {
             use std::os::fd::AsRawFd;
-            unsafe { libc::fsync(file.as_raw_fd()); }
+            unsafe {
+                libc::fsync(file.as_raw_fd());
+            }
         }
         Ok(vec![])
     }
@@ -395,10 +453,16 @@ impl SharedFolder {
         // fuse_rename_in: newdir(8) + name + '\0' + newname + '\0'
         let newdir = u64::from_le_bytes(body[0..8].try_into().map_err(|_| libc::EIO)?);
         let name_bytes = &body[8..];
-        let name_end = name_bytes.iter().position(|&b| b == 0).unwrap_or(name_bytes.len());
+        let name_end = name_bytes
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(name_bytes.len());
         let name = std::str::from_utf8(&name_bytes[..name_end]).map_err(|_| libc::EIO)?;
         let newname_bytes = &name_bytes[name_end + 1..];
-        let newname_end = newname_bytes.iter().position(|&b| b == 0).unwrap_or(newname_bytes.len());
+        let newname_end = newname_bytes
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(newname_bytes.len());
         let newname = std::str::from_utf8(&newname_bytes[..newname_end]).map_err(|_| libc::EIO)?;
 
         let old_parent = self.inodes.get(&header.nodeid).ok_or(libc::ENOENT)?;
@@ -435,8 +499,11 @@ impl SharedFolder {
         // fuse_forget_one: nodeid(8) + nlookup(8)
         for i in 0..count as usize {
             let offset = 8 + i * 16;
-            if offset + 8 > body.len() { break; }
-            let nodeid = u64::from_le_bytes(body[offset..offset + 8].try_into().map_err(|_| libc::EIO)?);
+            if offset + 8 > body.len() {
+                break;
+            }
+            let nodeid =
+                u64::from_le_bytes(body[offset..offset + 8].try_into().map_err(|_| libc::EIO)?);
             self.inodes.remove(&nodeid);
         }
         Ok(vec![])
@@ -490,7 +557,7 @@ impl SharedFolder {
         let size = u32::from_le_bytes(body[16..20].try_into().map_err(|_| libc::EIO)?);
         let data = &body[24..]; // 4 bytes writing_mode padding after size
 
-        use std::io::{Write, Seek, SeekFrom};
+        use std::io::{Seek, SeekFrom, Write};
         let file = self.open_files.get_mut(&fh).ok_or(libc::EBADF)?;
         file.seek(SeekFrom::Start(offset)).map_err(|_| libc::EIO)?;
 
@@ -578,27 +645,27 @@ fn fuse_attr_bytes(ino: u64, meta: &std::fs::Metadata) -> Vec<u8> {
     out.extend((meta.gid()).to_le_bytes());
     out.extend((meta.rdev() as u32).to_le_bytes());
     out.extend((512u32).to_le_bytes()); // blksize
-    out.extend(0u32.to_le_bytes());     // padding
+    out.extend(0u32.to_le_bytes()); // padding
     out
 }
 
 fn build_entry_out(nodeid: u64, meta: &std::fs::Metadata) -> Vec<u8> {
     let mut out = Vec::new();
-    out.extend(nodeid.to_le_bytes());          // nodeid
-    out.extend(0u64.to_le_bytes());            // generation
-    out.extend(1u64.to_le_bytes());            // entry_valid (seconds)
-    out.extend(1u64.to_le_bytes());            // attr_valid (seconds)
-    out.extend(0u32.to_le_bytes());            // entry_valid_nsec
-    out.extend(0u32.to_le_bytes());            // attr_valid_nsec
+    out.extend(nodeid.to_le_bytes()); // nodeid
+    out.extend(0u64.to_le_bytes()); // generation
+    out.extend(1u64.to_le_bytes()); // entry_valid (seconds)
+    out.extend(1u64.to_le_bytes()); // attr_valid (seconds)
+    out.extend(0u32.to_le_bytes()); // entry_valid_nsec
+    out.extend(0u32.to_le_bytes()); // attr_valid_nsec
     out.extend(fuse_attr_bytes(nodeid, meta));
     out
 }
 
 fn build_attr_out(meta: &std::fs::Metadata) -> Vec<u8> {
     let mut out = Vec::new();
-    out.extend(1u64.to_le_bytes());            // attr_valid (seconds)
-    out.extend(0u32.to_le_bytes());            // attr_valid_nsec
-    out.extend(0u32.to_le_bytes());            // dummy
+    out.extend(1u64.to_le_bytes()); // attr_valid (seconds)
+    out.extend(0u32.to_le_bytes()); // attr_valid_nsec
+    out.extend(0u32.to_le_bytes()); // dummy
     out.extend(fuse_attr_bytes(0, meta));
     out
 }

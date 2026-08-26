@@ -1,18 +1,31 @@
 use std::{
-    fs::{self, File}, os::fd::AsRawFd, path::PathBuf,
+    fs::{self, File},
+    os::fd::AsRawFd,
+    path::PathBuf,
 };
 
 use crossterm::terminal::disable_raw_mode;
 
 use ferrumvm::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, devices::{
-        cmos::Cmos, serial::{Serial, SerialMode}, timer::Pit, virtio::{
-            devices::{blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, net::NetVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport,
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
+    devices::{
+        cmos::Cmos,
+        serial::{Serial, SerialMode},
+        timer::Pit,
+        virtio::{
+            devices::{
+                blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, net::NetVirtio, rng::RngVirtio,
+            },
+            transports::mmio::MMIOTransport,
         },
-    }, irq::map::IrqMap, machine_config::{
+    },
+    irq::map::IrqMap,
+    machine_config::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
-    }, platform::{networking::tap::TAPDevice, shared_folder::shared_folder::SharedFolder}, vm::vm::VirtualMachine,
+    },
+    platform::{networking::tap::TAPDevice, shared_folder::shared_folder::SharedFolder},
+    vm::vm::VirtualMachine,
 };
 
 fn main() {
@@ -55,7 +68,10 @@ fn main() {
         6,
     ));
     let fuse = Box::new(MMIOTransport::new(
-        Box::new(FsVirtio::new("Home", SharedFolder::new(PathBuf::from("/home/miles/")))),
+        Box::new(FsVirtio::new(
+            "Home",
+            SharedFolder::new(PathBuf::from("/home/miles/")),
+        )),
         2,
         7,
     ));

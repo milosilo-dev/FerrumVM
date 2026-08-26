@@ -1,7 +1,10 @@
 use crate::{
     devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtqDesc},
     platform::shared_folder::{
-        fuse::{opcode::FUSE_FORGET, header::{FuseInHeader, FuseOutHeader}},
+        fuse::{
+            header::{FuseInHeader, FuseOutHeader},
+            opcode::FUSE_FORGET,
+        },
         shared_folder::SharedFolder,
     },
 };
