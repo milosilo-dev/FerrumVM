@@ -94,7 +94,7 @@ impl MachineConfig {
             // More free RAM
             MemMap {
                 start: 0x4000000,
-                end: 0x1FEFFFFF,
+                end: (self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset),
                 mem_type: MemType::ConventionalMemory as u32,
             },
             // MMIO
