@@ -1,5 +1,5 @@
 use crate::{
-    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtqDesc},
+    devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle},
     platform::shared_folder::{
         fuse::{
             header::{FuseInHeader, FuseOutHeader},
@@ -48,6 +48,58 @@ impl FsVirtio {
             fuse_device,
         }
     }
+
+    fn collect_readable(
+        queue: &mut crate::devices::virtio::virtio::VirtioQueue,
+        guest_memory: &mut VirtioGuestMemoryHandle,
+        head: u16,
+    ) -> Vec<u8> {
+        let mut fuse_in_bytes = Vec::new();
+        let mut desc = queue.get_descriptor(guest_memory, head);
+
+        loop {
+            if desc.flags & 2 != 0 {
+                break;
+            }
+            let mut buf = vec![0u8; desc.len as usize];
+            guest_memory.read_guest_memory(desc.addr, &mut buf);
+            fuse_in_bytes.extend_from_slice(&buf);
+
+            if desc.flags & 1 == 0 {
+                break;
+            }
+            desc = queue.get_descriptor(guest_memory, desc.next);
+        }
+
+        fuse_in_bytes
+    }
+
+    fn write_out_reply(
+        queue: &mut crate::devices::virtio::virtio::VirtioQueue,
+        guest_memory: &mut VirtioGuestMemoryHandle,
+        head: u16,
+        reply: &[u8],
+    ) -> usize {
+        let mut written: usize = 0;
+        let mut desc = queue.get_descriptor(guest_memory, head);
+
+        loop {
+            if desc.flags & 2 != 0 {
+                let n = (reply.len() - written).min(desc.len as usize);
+                guest_memory.write_guest_memory(desc.addr, &reply[written..written + n]);
+                written += n;
+                if written >= reply.len() {
+                    break;
+                }
+            }
+            if desc.flags & 1 == 0 {
+                break;
+            }
+            desc = queue.get_descriptor(guest_memory, desc.next);
+        }
+
+        written
+    }
 }
 
 impl VirtioDevice for FsVirtio {
@@ -77,9 +129,7 @@ impl VirtioDevice for FsVirtio {
             0 => {
                 // Hiprio
                 while let Some(head) = queue.pop_avail(guest_memory) {
-                    let fuse_in_descriptor = queue.get_descriptor(guest_memory, head);
-                    let mut fuse_in_bytes = vec![0u8; fuse_in_descriptor.len as usize];
-                    guest_memory.read_guest_memory(fuse_in_descriptor.addr, &mut fuse_in_bytes);
+                    let fuse_in_bytes = Self::collect_readable(queue, guest_memory, head);
                     let (fuse_in_header, _) = FuseInHeader::new(fuse_in_bytes);
 
                     match fuse_in_header.opcode {
@@ -96,16 +146,8 @@ impl VirtioDevice for FsVirtio {
             1 => {
                 // Request queue
                 while let Some(head) = queue.pop_avail(guest_memory) {
-                    let fuse_in_descriptor = queue.get_descriptor(guest_memory, head);
-                    let mut fuse_in_bytes = vec![0u8; fuse_in_descriptor.len as usize];
-                    guest_memory.read_guest_memory(fuse_in_descriptor.addr, &mut fuse_in_bytes);
+                    let fuse_in_bytes = Self::collect_readable(queue, guest_memory, head);
                     let (fuse_in_header, fuse_data) = FuseInHeader::new(fuse_in_bytes);
-
-                    let mut out_desc: VirtqDesc =
-                        queue.get_descriptor(guest_memory, fuse_in_descriptor.next);
-                    while out_desc.flags & 2 == 0 {
-                        out_desc = queue.get_descriptor(guest_memory, out_desc.next);
-                    }
 
                     let reply_bytes = match self.fuse_device.dispatch(&fuse_in_header, &fuse_data) {
                         Ok(payload) => {
@@ -128,8 +170,7 @@ impl VirtioDevice for FsVirtio {
                         }
                     };
 
-                    let write_len = reply_bytes.len().min(out_desc.len as usize);
-                    guest_memory.write_guest_memory(out_desc.addr, &reply_bytes[..write_len]);
+                    Self::write_out_reply(queue, guest_memory, head, &reply_bytes);
 
                     queue.push_used(guest_memory, head, 0);
                     did_work = true;

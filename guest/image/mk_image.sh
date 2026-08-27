@@ -16,6 +16,7 @@ mkdir -p rootfs/dev
 mkdir -p rootfs/proc
 mkdir -p rootfs/sys
 mkdir -p rootfs/run
+mkdir -p rootfs/mnt
 
 mkdir -p rootfs/etc/network/if-pre-up.d
 mkdir -p rootfs/etc/network/if-down.d
@@ -24,7 +25,7 @@ mkdir -p rootfs/etc/network/if-post-down.d
 ./initramfs/make_initramfs.sh
 
 # 1. Create empty disk
-dd if=/dev/zero of=$IMG bs=1M count=1024
+dd if=/dev/zero of=$IMG bs=1M count=4096
 
 # 2. Create GPT + partition
 parted $IMG --script mklabel gpt

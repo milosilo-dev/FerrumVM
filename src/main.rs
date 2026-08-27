@@ -69,8 +69,8 @@ fn main() {
     ));
     let fuse = Box::new(MMIOTransport::new(
         Box::new(FsVirtio::new(
-            "Home",
-            SharedFolder::new(PathBuf::from("/home/miles/")),
+            "Self",
+            SharedFolder::new(PathBuf::from("/home/miles/Data/FerrumVM/")),
         )),
         2,
         7,
@@ -81,7 +81,7 @@ fn main() {
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
-            mem_size: 512 * 1024 * 1024,
+            mem_size: 512 * 1024 * 1024, // 1Gb
             mem_offset: 0x0000,
         }],
         binaries: vec![

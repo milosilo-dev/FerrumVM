@@ -10,6 +10,7 @@ pub struct FuseInHeader {
     pub uid: u32,
     pub gid: u32,
     pub pid: u32,
+    pub padding: u32,
 }
 
 impl FuseInHeader {
@@ -25,6 +26,7 @@ impl FuseInHeader {
                 uid: read_le_u32(input),
                 gid: read_le_u32(input),
                 pid: read_le_u32(input),
+                padding: read_le_u32(input),
             },
             input.to_vec(),
         )
