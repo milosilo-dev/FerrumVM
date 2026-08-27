@@ -48,13 +48,37 @@ impl Pit {
         }
     }
 
-    fn period_ns(divisor: u32) -> f64 {
+    pub fn period_ns(divisor: u32) -> f64 {
         let d = if divisor == 0 { 65536 } else { divisor } as f64;
         (d / PIT_BASE_HZ) * 1_000_000_000.0
     }
 
     fn update_period(&mut self) {
         self.period_ns = Self::period_ns(self.divisor);
+    }
+}
+
+// Test accessors -- expose internal PIT state read-only so integration tests
+// can verify divisor programming and timing behavior through the public I/O API.
+impl Pit {
+    pub fn divisor(&self) -> u32 {
+        self.divisor
+    }
+
+    pub fn programmed(&self) -> bool {
+        self.programmed
+    }
+
+    pub fn access_mode(&self) -> u8 {
+        self.access_mode
+    }
+
+    pub fn op_mode(&self) -> u8 {
+        self.op_mode
+    }
+
+    pub fn acc_ns(&self) -> f64 {
+        self.acc_ns
     }
 }
 

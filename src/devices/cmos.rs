@@ -38,7 +38,7 @@ pub struct Cmos {
     ds_enable: bool,
 }
 
-fn to_bcd(val: u8) -> u8 {
+pub fn to_bcd(val: u8) -> u8 {
     ((val / 10) << 4) | (val % 10)
 }
 
@@ -58,6 +58,30 @@ impl Cmos {
             hour_12: false,
             ds_enable: false,
         }
+    }
+}
+
+// Test accessors -- expose CMOS internal state so integration tests can drive
+// and verify the StatusA/StatusB register flags through the public API.
+impl Cmos {
+    pub fn set_uip(&mut self, v: bool) {
+        self.uip = v;
+    }
+
+    pub fn set_oscillator(&mut self, v: u8) {
+        self.oscillator = v;
+    }
+
+    pub fn set_rate(&mut self, v: u8) {
+        self.rate = v;
+    }
+
+    pub fn is_halt(&self) -> bool {
+        self.halt
+    }
+
+    pub fn is_binary(&self) -> bool {
+        self.binary
     }
 }
 
@@ -166,3 +190,4 @@ impl IODevice for Cmos {
         }
     }
 }
+

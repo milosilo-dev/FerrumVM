@@ -111,3 +111,4 @@ impl MMIODeviceMap {
         }
     }
 }
+

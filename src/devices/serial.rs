@@ -328,3 +328,4 @@ impl IODevice for Serial {
         self.update_lsr();
     }
 }
+
