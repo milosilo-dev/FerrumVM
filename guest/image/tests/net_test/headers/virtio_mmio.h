@@ -2,10 +2,10 @@
 #pragma once
 
 #include <stdint.h>
-#define VIRTIO_RNG_BASE     0x20000000
-#define VIRTIO_CNT_BASE     0x20001000
-#define VIRTIO_BLK_BASE     0x20002000
-#define VIRTIO_NET_BASE     0x20003000
+#define VIRTIO_RNG_BASE     0xFFF00000
+#define VIRTIO_CNT_BASE     0xFFF01000
+#define VIRTIO_BLK_BASE     0xFFF02000
+#define VIRTIO_NET_BASE     0xFFF03000
 
 // MMIO register offsets (all 32-bit reads/writes)
 #define VIRTIO_MMIO_MAGIC           0x000  // must read 0x74726976 ("virt")

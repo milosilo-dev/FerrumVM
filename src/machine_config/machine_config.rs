@@ -99,8 +99,8 @@ impl MachineConfig {
             },
             // MMIO
             MemMap {
-                start: 0x20000000,
-                end: 0x2000FFFF,
+                start: 0xFFF00000,
+                end: 0xFFF0FFFF,
                 mem_type: MemType::MMIO as u32,
             },
         ];

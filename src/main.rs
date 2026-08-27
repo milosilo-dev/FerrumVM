@@ -24,7 +24,7 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
-    platform::{networking::tap::TAPDevice, shared_folder::shared_folder::SharedFolder},
+    platform::{networking::tap::TAPDevice, shared_folder::SharedFolder},
     vm::vm::VirtualMachine,
 };
 
@@ -81,7 +81,7 @@ fn main() {
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
-            mem_size: 512 * 1024 * 1024, // 1Gb
+            mem_size: 1024 * 1024 * 1024, // 1Gb
             mem_offset: 0x0000,
         }],
         binaries: vec![
@@ -97,11 +97,11 @@ fn main() {
             IODeviceRegion::new(0x70..=0x71, cmos),
         ],
         mmio_devices: vec![
-            MMIODeviceRegion::new(0x20000000..=0x20000FFF, rng),
-            MMIODeviceRegion::new(0x20001000..=0x20001FFF, cnt),
-            MMIODeviceRegion::new(0x20002000..=0x20002FFF, blk),
-            MMIODeviceRegion::new(0x20003000..=0x20003FFF, net),
-            MMIODeviceRegion::new(0x20004000..=0x20004FFF, fuse),
+            MMIODeviceRegion::new(0xFFF00000..=0xFFF00FFF, rng),
+            MMIODeviceRegion::new(0xFFF01000..=0xFFF01FFF, cnt),
+            MMIODeviceRegion::new(0xFFF02000..=0xFFF02FFF, blk),
+            MMIODeviceRegion::new(0xFFF03000..=0xFFF03FFF, net),
+            MMIODeviceRegion::new(0xFFF04000..=0xFFF04FFF, fuse),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here

@@ -5,7 +5,7 @@ use crate::{
             header::{FuseInHeader, FuseOutHeader},
             opcode::FUSE_FORGET,
         },
-        shared_folder::SharedFolder,
+        SharedFolder,
     },
 };
 
