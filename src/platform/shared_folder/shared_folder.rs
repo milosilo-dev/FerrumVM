@@ -20,7 +20,6 @@ use crate::platform::shared_folder::fuse::{
 };
 
 pub struct SharedFolder {
-    root: PathBuf,
     // FUSE "nodeid" -> host path. Root is always FUSE_ROOT_ID.
     inodes: HashMap<u64, PathBuf>,
     next_inode: u64,
@@ -38,7 +37,6 @@ impl SharedFolder {
         let mut inodes = HashMap::new();
         inodes.insert(FUSE_ROOT_ID, root.clone());
         Self {
-            root,
             inodes,
             next_inode: FUSE_ROOT_ID + 1,
             open_files: HashMap::new(),
