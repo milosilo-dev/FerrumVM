@@ -101,7 +101,7 @@ fn main() {
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
-        total_vcpus: 2,
+        total_vcpus: 4,
     };
     machine_config.inject_memmap();
     machine_config.inject_acpi_tables();

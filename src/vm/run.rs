@@ -1,5 +1,4 @@
 use kvm_ioctls::VcpuExit;
-use std::io::Write;
 use std::sync::Arc;
 use crossterm::terminal::disable_raw_mode;
 

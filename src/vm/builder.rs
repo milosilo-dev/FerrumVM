@@ -133,6 +133,11 @@ impl VirtualMachine {
                     entry.edx |= 1 << 20; // NX
                 }
 
+                1 => {
+                    entry.ebx =
+                        (entry.ebx & 0x00FF_FFFF) | ((vcpu_id as u32) << 24); // APIC ID
+                }
+
                 _ => {}
             }
         }
