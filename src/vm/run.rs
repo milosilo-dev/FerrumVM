@@ -5,6 +5,7 @@ use crossterm::terminal::disable_raw_mode;
 
 use crate::vm::vm::VirtualMachine;
 
+#[derive(Debug)]
 pub enum CrashReason {
     Hlt,
     FailedEntry,
@@ -139,12 +140,14 @@ impl VirtualMachine {
             std::thread::spawn(move || {
                 loop {
                     let ret = vm.run(vcpu_id);
-                    if ret.is_err() {
+                    if let Err(reason) = ret {
                         disable_raw_mode().unwrap();
+                        eprintln!("VCPU 0x{:X} crashed: {:?}\n", vcpu_id, reason);
                         panic!("VCPU 0x{:X} crashed!\n", vcpu_id);
                     }
                 }
             });
         }
+        loop {}
     }
 }

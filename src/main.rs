@@ -1,10 +1,6 @@
 use std::{
-    fs::{self, File},
-    os::fd::AsRawFd,
-    path::PathBuf,
+    fs::{self, File}, os::fd::AsRawFd, path::PathBuf, sync::Arc,
 };
-
-use crossterm::terminal::disable_raw_mode;
 
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
@@ -108,16 +104,8 @@ fn main() {
         total_vcpus: 2,
     };
     machine_config.inject_memmap();
+    machine_config.inject_acpi_tables();
 
-    let mut vm = VirtualMachine::new(machine_config);
-
-    loop {
-        let ret = vm.run(0);
-        if ret.is_err() {
-            break;
-        }
-    }
-
-    disable_raw_mode().unwrap();
-    print!("VM Crash!\n");
+    let vm = VirtualMachine::new(machine_config);
+    VirtualMachine::threaded_run(Arc::new(vm));
 }

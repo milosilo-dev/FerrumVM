@@ -20,6 +20,7 @@
           fakeroot
           parted
           pkgsCross.mingwW64.stdenv.cc
+          acpica-tools
         ];
       };
     };
