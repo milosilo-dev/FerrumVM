@@ -1,7 +1,7 @@
 use std::sync::atomic::{Ordering, fence};
 use std::sync::{Arc, Mutex};
 
-use crate::memory_region::{GuestMemoryHandle, MemoryRegion};
+use crate::machine_config::memory_region::{GuestMemoryHandle, MemoryRegion};
 
 pub type IrqCallback = Arc<dyn Fn() + Send + Sync>;
 

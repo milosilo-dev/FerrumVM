@@ -105,13 +105,14 @@ fn main() {
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
+        total_vcpus: 2,
     };
     machine_config.inject_memmap();
 
     let mut vm = VirtualMachine::new(machine_config);
 
     loop {
-        let ret = vm.run();
+        let ret = vm.run(0);
         if ret.is_err() {
             break;
         }

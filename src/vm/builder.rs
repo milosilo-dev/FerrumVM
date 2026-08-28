@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use kvm_bindings::{
     KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region,
 };
-use kvm_ioctls::Kvm;
+use kvm_ioctls::{Kvm, VmFd};
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use vmm_sys_util::fam::FamStructWrapper;
 
@@ -11,12 +11,7 @@ use crate::{
     device_maps::{
         io::{IODeviceMap, IODeviceRegion},
         mmio::{MMIODeviceMap, MMIODeviceRegion},
-    },
-    irq::handler::IRQHandler,
-    machine_config::machine_config::MachineConfig,
-    memory_region::MemoryRegion,
-    vcpu::VCPU,
-    vm::{tick::TickContext, vm::VirtualMachine},
+    }, irq::handler::IRQHandler, machine_config::{machine_config::MachineConfig, memory_region::MemoryRegion}, vcpu::VCPU, vm::{tick::TickContext, vm::VirtualMachine},
 };
 
 impl VirtualMachine {
@@ -29,7 +24,7 @@ impl VirtualMachine {
             FamStructWrapper::new(machine_config.irq_map.len()).unwrap();
 
         let mut idx = 0;
-        for irq_map in machine_config.irq_map {
+        for irq_map in machine_config.irq_map.as_slice() {
             routing.as_mut_slice()[idx] = kvm_irq_routing_entry {
                 gsi: irq_map.read_gsi(),
                 type_: KVM_IRQ_ROUTING_IRQCHIP,
@@ -51,48 +46,13 @@ impl VirtualMachine {
         let irq_handler = Arc::new(Mutex::new(IRQHandler::new()));
         let guest_memory = Arc::new(Mutex::new(vec![]));
 
-        let mut cpuid = kvm
-            .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
-            .unwrap();
-        for entry in cpuid.as_mut_slice() {
-            match entry.function {
-                0x80000000 => {
-                    if entry.eax < 0x80000001 {
-                        entry.eax = 0x80000001;
-                    }
-                }
-
-                0x80000001 => {
-                    entry.edx |= 1 << 29; // Long mode
-                    entry.edx |= 1 << 20; // NX
-                }
-
-                _ => {}
-            }
-        }
-
-        let vcpu = VCPU::new(Arc::clone(&vm), machine_config.code_entry, &mut cpuid);
-
-        {
-            use std::io::Write;
-            const APIC_LVT0: usize = 0x350;
-            let mut lapic = vcpu.fd.get_lapic().expect("get_lapic failed");
-            let lvt0_bytes = unsafe {
-                let p = &lapic.regs[APIC_LVT0..APIC_LVT0 + 4] as *const [i8] as *const [u8];
-                *(&*p as *const [u8] as *const [u8; 4])
-            };
-            let mut lvt0 = u32::from_le_bytes(lvt0_bytes);
-            lvt0 &= !(1 << 16); // clear Mask bit → unmask
-            let updated = lvt0.to_le_bytes();
-            unsafe {
-                let dst = &mut lapic.regs[APIC_LVT0..APIC_LVT0 + 4] as *mut [i8] as *mut [u8];
-                (&mut *dst).write_all(&updated).unwrap();
-            }
-            vcpu.fd.set_lapic(&lapic).expect("set_lapic failed");
+        let mut vcpus: Vec<Arc<Mutex<VCPU>>> = vec![];
+        for vcpu_id in 0..machine_config.total_vcpus{
+            vcpus.push(Arc::new(Mutex::new(Self::new_vcpu(&kvm, &vm, &machine_config, vcpu_id))));
         }
 
         let mut this = Self {
-            vcpu,
+            vcpus: vcpus,
             vm: Arc::clone(&vm),
             io_map: Arc::clone(&io_map),
             mmio_map: Arc::clone(&mmio_map),
@@ -154,6 +114,49 @@ impl VirtualMachine {
         ));
 
         this
+    }
+
+    fn new_vcpu(kvm: &Kvm, vm: &Arc<Mutex<VmFd>>, machine_config: &MachineConfig, vcpu_id: usize) -> VCPU {
+        let mut cpuid = kvm
+            .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
+            .unwrap();
+        for entry in cpuid.as_mut_slice() {
+            match entry.function {
+                0x80000000 => {
+                    if entry.eax < 0x80000001 {
+                        entry.eax = 0x80000001;
+                    }
+                }
+
+                0x80000001 => {
+                    entry.edx |= 1 << 29; // Long mode
+                    entry.edx |= 1 << 20; // NX
+                }
+
+                _ => {}
+            }
+        }
+
+        let vcpu = VCPU::new(Arc::clone(&vm), vcpu_id as u64, machine_config.code_entry, &mut cpuid);
+
+        {
+            use std::io::Write;
+            const APIC_LVT0: usize = 0x350;
+            let mut lapic = vcpu.fd.get_lapic().expect("get_lapic failed");
+            let lvt0_bytes = unsafe {
+                let p = &lapic.regs[APIC_LVT0..APIC_LVT0 + 4] as *const [i8] as *const [u8];
+                *(&*p as *const [u8] as *const [u8; 4])
+            };
+            let mut lvt0 = u32::from_le_bytes(lvt0_bytes);
+            lvt0 &= !(1 << 16); // clear Mask bit → unmask
+            let updated = lvt0.to_le_bytes();
+            unsafe {
+                let dst = &mut lapic.regs[APIC_LVT0..APIC_LVT0 + 4] as *mut [i8] as *mut [u8];
+                (&mut *dst).write_all(&updated).unwrap();
+            }
+            vcpu.fd.set_lapic(&lapic).expect("set_lapic failed");
+        }
+        vcpu
     }
 
     fn new_mem(&mut self, mem_size: usize, mem_offset: u64) {

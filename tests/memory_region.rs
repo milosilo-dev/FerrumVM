@@ -1,4 +1,4 @@
-use ferrumvm::memory_region::MemoryRegion;
+use ferrumvm::machine_config::memory_region::MemoryRegion;
 
 fn alloc_region(size: usize) -> MemoryRegion {
     let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();

@@ -5,7 +5,7 @@ use ferrumvm::{
         devices::{counter::CntVirtio, rng::RngVirtio, console::ConsoleVirtio},
         virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
     },
-    memory_region::{GuestMemoryHandle, MemoryRegion},
+    machine_config::memory_region::{GuestMemoryHandle, MemoryRegion},
 };
 
 const MEM_SIZE: usize = 0x10000;

@@ -20,6 +20,7 @@ pub struct MachineConfig {
     pub irq_map: Vec<IrqMap>,
 
     pub code_entry: usize,
+    pub total_vcpus: usize,
 }
 
 impl MachineConfig {

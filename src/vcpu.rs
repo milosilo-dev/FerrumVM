@@ -60,11 +60,12 @@ fn filter_cpuid(cpuid: &mut FamStructWrapper<kvm_cpuid2>) {
 impl VCPU {
     pub fn new(
         vm: Arc<Mutex<VmFd>>,
+        vcpu_id: u64,
         entry: usize,
         mut cpuid: &mut FamStructWrapper<kvm_bindings::kvm_cpuid2>,
     ) -> Self {
         let vm_lock = vm.lock().unwrap();
-        let vcpu = vm_lock.create_vcpu(0).unwrap();
+        let vcpu = vm_lock.create_vcpu(vcpu_id).unwrap();
 
         filter_cpuid(&mut cpuid);
         let _ = vcpu.set_cpuid2(cpuid).unwrap();

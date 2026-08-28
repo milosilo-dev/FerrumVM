@@ -7,7 +7,7 @@ use crate::{
     device_maps::mmio::MMIODevice,
     devices::virtio::virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
     irq::handler::{IRQCommand, IRQHandler},
-    memory_region::GuestMemoryHandle,
+    machine_config::memory_region::GuestMemoryHandle,
 };
 
 const MAGIC_NUMBER: u32 = 0x74726976;

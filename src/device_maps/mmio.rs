@@ -7,7 +7,7 @@ use kvm_ioctls::VmFd;
 
 use crate::{
     irq::handler::IRQHandler,
-    memory_region::{GuestMemoryHandle, MemoryRegion},
+    machine_config::memory_region::{GuestMemoryHandle, MemoryRegion},
 };
 
 pub trait MMIODevice: Send {
