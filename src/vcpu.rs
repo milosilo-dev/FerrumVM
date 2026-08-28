@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use kvm_bindings::{kvm_cpuid2, kvm_mp_state, kvm_regs, kvm_segment};
+use kvm_bindings::{kvm_cpuid2, kvm_mp_state, kvm_regs, kvm_segment, KVM_MP_STATE_UNINITIALIZED};
 use kvm_ioctls::{VcpuFd, VmFd};
 use vmm_sys_util::fam::FamStructWrapper;
 
@@ -83,21 +83,19 @@ impl VCPU {
 
         vcpu.set_sregs(&sregs).unwrap();
 
-        let mut regs = kvm_regs::default();
-        regs.rip = entry as u64;
-        regs.rsp = 0x0FF0;
-        regs.rsi = 0x20000;
-        regs.rflags = 0x202;
+        if vcpu_id == 0 {
+            let mut regs = kvm_regs::default();
 
-        vcpu.set_regs(&regs).unwrap();
+            regs.rip = entry as u64;
+            regs.rsp = 0x0FF0;
+            regs.rsi = 0x20000;
+            regs.rflags = 0x202;
 
-        // Application processors must wait for an INIT-SIPI from the BSP
-        // instead of executing the firmware reset vector.
-        if vcpu_id > 0 {
-            let mp_state = kvm_mp_state {
-                mp_state: kvm_bindings::KVM_MP_STATE_UNINITIALIZED,
-            };
-            vcpu.set_mp_state(mp_state).unwrap();
+            vcpu.set_regs(&regs).unwrap();
+        } else {
+            vcpu.set_mp_state(kvm_mp_state {
+                mp_state: KVM_MP_STATE_UNINITIALIZED,
+            }).unwrap();
         }
 
         Self { fd: vcpu }

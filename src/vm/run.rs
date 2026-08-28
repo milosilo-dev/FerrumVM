@@ -29,9 +29,7 @@ impl VirtualMachine {
             let exit = match vcpu.fd.run() {
                 Ok(exit) => exit,
 
-                Err(e) if e.errno() == libc::EINTR => {
-                    continue;
-                }
+                Err(e) if matches!(e.errno(), libc::EINTR | libc::EAGAIN) => continue,
 
                 Err(_) => return Err(CrashReason::RunError),
             };
@@ -41,14 +39,11 @@ impl VirtualMachine {
                     let regs = vcpu.fd.get_regs().ok();
 
                     if let Some(regs) = regs {
-                        println!("KVM_EXIT_HLT at RIP={:#x}", regs.rip);
+                        eprint!("KVM_EXIT_HLT at RIP={:#x}\n\r", regs.rip);
                     } else {
-                        println!("KVM_EXIT_HLT");
+                        eprint!("KVM_EXIT_HLT\n\r");
                     }
-
-                    std::io::stdout().flush().ok();
-
-                    return Err(CrashReason::Hlt);
+                    continue;
                 }
 
                 VcpuExit::IoOut(port, data) => {
@@ -143,7 +138,7 @@ impl VirtualMachine {
                     if let Err(reason) = ret {
                         disable_raw_mode().unwrap();
                         eprintln!("VCPU 0x{:X} crashed: {:?}\n", vcpu_id, reason);
-                        panic!("VCPU 0x{:X} crashed!\n", vcpu_id);
+                        std::process::exit(0);
                     }
                 }
             });

@@ -116,7 +116,7 @@ impl VirtualMachine {
         this
     }
 
-    fn new_vcpu(kvm: &Kvm, vm: &Arc<Mutex<VmFd>>, machine_config: &MachineConfig, vcpu_id: usize) -> VCPU {
+    fn new_vcpu(kvm: &Kvm, vm: &Arc<Mutex<VmFd>>, machine_config: &MachineConfig, vcpu_id: u8) -> VCPU {
         let mut cpuid = kvm
             .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
             .unwrap();

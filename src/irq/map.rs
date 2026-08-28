@@ -34,6 +34,7 @@ impl IrqMap {
             Self::new(5, 5, 0), // Virtio-blk (MMIO)
             Self::new(6, 6, 0), // Virtio-net (MMIO)
             Self::new(7, 7, 0), // Virtio-fs (MMIO)
+            Self::new(9, 0, 1), // ACPI SCI
         ]
     }
 }

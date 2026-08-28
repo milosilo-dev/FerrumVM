@@ -18,7 +18,7 @@
  *     Compiler ID      "INTL"
  *     Compiler Version 0x20251212 (539300370)
  */
-DefinitionBlock ("", "DSDT", 2, "FERRUM", "VM_DSDT", 0x00001000)
+DefinitionBlock ("", "DSDT", 2, "FERRUM", "FVM_DSDT", 0x00001000)
 {
     Scope (_PR)
     {

@@ -1,10 +1,3 @@
-// Fully generate a new FADT binary programmatically
-//
-// Field offsets follow the ACPI 3.0 Fixed ACPI Description Table layout:
-// SCI @ 46, SMI @ 48, PM blocks @ 56/64/72/76/80, lengths @ 88-93,
-// RTC indices @ 106-108, boot flags @ 109, flags @ 112, reset reg @ 116,
-// X_FACS @ 132, X_DSDT @ 140.
-
 use crate::machine_config::binary::Binary;
 
 pub fn build_fadt(dsdt_addr: u64) -> Binary {
@@ -26,6 +19,9 @@ pub fn build_fadt(dsdt_addr: u64) -> Binary {
 
     // DSDT (32-bit address)
     fadt[40..44].copy_from_slice(&(dsdt_addr as u32).to_le_bytes());
+
+    // SCI_INT
+    fadt[46..48].copy_from_slice(&9u16.to_le_bytes());
 
     // SMI command port / ACPI enable-disable writes (QEMU-style, unused by guest)
     fadt[48..52].copy_from_slice(&0x000000B2u32.to_le_bytes()); // SMI_CMD
@@ -53,13 +49,15 @@ pub fn build_fadt(dsdt_addr: u64) -> Binary {
     // Flags: WBINVD (bit 0), WBINVD_FLUSH (bit 1)
     fadt[112..116].copy_from_slice(&0x03u32.to_le_bytes());
 
-    // Reset Register (IO port 0xCF9) + Reset Value
-    fadt[116] = 1; // Space ID: SystemIO
-    fadt[117] = 8; // Bit Width
-    fadt[118] = 0; // Bit Offset
-    fadt[119] = 1; // Access Width: byte
-    fadt[124..132].copy_from_slice(&0x0CF9u64.to_le_bytes()); // Address
-    fadt[128] = 0x0A; // Reset Value
+    // Reset Register
+    fadt[116] = 1;     // System I/O
+    fadt[117] = 8;     // Bit width
+    fadt[118] = 0;     // Bit offset
+    fadt[119] = 1;     // Byte access
+
+    fadt[120..128].copy_from_slice(&0x0CF9u64.to_le_bytes());
+
+    fadt[128] = 0x0A;  // Reset value
 
     // X_FACS (64-bit) - 0, no FACS used
     fadt[132..140].copy_from_slice(&0u64.to_le_bytes());

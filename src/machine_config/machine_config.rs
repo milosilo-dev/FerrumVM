@@ -1,6 +1,6 @@
 use crate::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, irq::map::IrqMap, machine_config::{
-        acpi::{dsdt::load_dsdt, fadt::build_fadt, rsdp::build_rsdp, xsdt::build_xsdt}, binary::Binary, mem_map::{MemMap, MemMapHeader, MemType},
+        acpi::{dsdt::load_dsdt, fadt::build_fadt, madt::build_madt, rsdp::build_rsdp, xsdt::build_xsdt}, binary::Binary, mem_map::{MemMap, MemMapHeader, MemType},
     },
 };
 
@@ -17,7 +17,7 @@ pub struct MachineConfig {
     pub irq_map: Vec<IrqMap>,
 
     pub code_entry: usize,
-    pub total_vcpus: usize,
+    pub total_vcpus: u8,
 }
 
 impl MachineConfig {
@@ -122,11 +122,13 @@ impl MachineConfig {
     pub fn inject_acpi_tables(&mut self) {
         let dsdt_bin = load_dsdt();
         let fadt_bin = build_fadt(dsdt_bin.offset);
-        let xsdt_bin = build_xsdt(&[fadt_bin.offset]);
+        let madt_bin = build_madt(self.total_vcpus);
+        let xsdt_bin = build_xsdt(&[fadt_bin.offset, madt_bin.offset]);
         let rsdp_bin = build_rsdp(xsdt_bin.offset);
 
         self.binaries.push(dsdt_bin);
         self.binaries.push(fadt_bin);
+        self.binaries.push(madt_bin);
         self.binaries.push(rsdp_bin);
         self.binaries.push(xsdt_bin);
     }
