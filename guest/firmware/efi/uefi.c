@@ -92,7 +92,7 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
     .Mode               = &gConOutMode,
 };
 
-#define PG_LIMIT 0x40000000ULL
+#define PG_LIMIT 0x80000000ULL
 static uint64_t pg_bump = 0x4000000ULL;
 
 static EFI_STATUS EFIAPI efi_AllocatePool(

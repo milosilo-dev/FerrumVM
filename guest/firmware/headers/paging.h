@@ -11,18 +11,21 @@
 #define PDPT_ADDR 0x61000
 #define PD_ADDR   0x62000
 #define PD2_ADDR  0x63000
+#define PD3_ADDR  0x64000
 
 static inline void paging_init(void) {
     uint64_t *pml4 = (uint64_t*)PML4_ADDR;
     uint64_t *pdpt  = (uint64_t*)PDPT_ADDR;
     uint64_t *pd    = (uint64_t*)PD_ADDR;
     uint64_t *pd2   = (uint64_t*)PD2_ADDR;
+    uint64_t *pd3   = (uint64_t*)PD3_ADDR;
 
     for (int i = 0; i < 512; i++) {
         pml4[i] = 0;
         pdpt[i] = 0;
         pd[i]   = 0;
         pd2[i]  = 0;
+        pd3[i]  = 0;
     }
 
     // correct pointer masking (IMPORTANT)
@@ -32,11 +35,23 @@ static inline void paging_init(void) {
     pdpt[0] = ((uint64_t)pd & 0x000FFFFFFFFFF000ULL)
             | PAGE_PRESENT | PAGE_WRITE;
 
-    // identity map ONLY first 1GB safely (not all 512 entries blindly)
+    // identity map first 1GB safely (not all 512 entries blindly)
     for (int i = 0; i < 512; i++) {
         uint64_t addr = (uint64_t)i * 0x200000ULL;
 
         pd[i] = (addr & 0x000FFFFFFFFFF000ULL)
+              | PAGE_PRESENT | PAGE_WRITE | PAGE_HUGE | PAGE_USER;
+    }
+
+    // map the second 1GB of RAM (0x40000000 - 0x7FFFFFFF) the same way,
+    // so the bootloader can use the full 2GB before installing its own paging
+    pdpt[1] = ((uint64_t)pd3 & 0x000FFFFFFFFFF000ULL)
+            | PAGE_PRESENT | PAGE_WRITE;
+
+    for (int i = 0; i < 512; i++) {
+        uint64_t addr = 0x40000000ULL + (uint64_t)i * 0x200000ULL;
+
+        pd3[i] = (addr & 0x000FFFFFFFFFF000ULL)
               | PAGE_PRESENT | PAGE_WRITE | PAGE_HUGE | PAGE_USER;
     }
 
