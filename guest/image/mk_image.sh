@@ -12,11 +12,13 @@ done
 
 cp $1 BOOTX64.EFI
 
-mkdir -p rootfs/dev
+mkdir -p rootfs/dev/pts
 mkdir -p rootfs/proc
 mkdir -p rootfs/sys
 mkdir -p rootfs/run
 mkdir -p rootfs/mnt
+mkdir -p rootfs/tmp
+chmod 1777 rootfs/tmp
 
 mkdir -p rootfs/etc/network/if-pre-up.d
 mkdir -p rootfs/etc/network/if-down.d
@@ -25,7 +27,7 @@ mkdir -p rootfs/etc/network/if-post-down.d
 ./initramfs/make_initramfs.sh
 
 # 1. Create empty disk
-dd if=/dev/zero of=$IMG bs=1M count=4096
+dd if=/dev/zero of=$IMG bs=1M count=32000
 
 # 2. Create GPT + partition
 parted $IMG --script mklabel gpt

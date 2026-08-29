@@ -16,6 +16,9 @@ mount -t proc proc /newroot/proc
 mount -t sysfs sysfs /newroot/sys
 mount -t devtmpfs devtmpfs /newroot/dev
 
+mkdir -p /newroot/dev/pts
+mount -t devpts devpts /newroot/dev/pts
+
 exec </dev/ttyS0 >/dev/ttyS0 2>&1
 exec switch_root /newroot /sbin/init
 
