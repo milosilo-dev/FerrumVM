@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include "../mem/heap.c"
+#include "memmap.h"
 #define PAGE_PRESENT    (1 << 0)
 #define PAGE_WRITE      (1 << 1)
 #define PAGE_HUGE       (1 << 7)  // 2MB pages in PD entries
@@ -29,34 +30,8 @@
 
 #define MAX_RAM_GB 8
 
-#define MEMMAP_ADDR 0x7000ULL
-#define MEMMAP_MGK_NUM 0xFE02FE02
-
-typedef struct {
-    uint64_t start;
-    uint64_t end;
-    uint32_t type;
-} __attribute__((packed)) MemMapEntry;
-
-typedef struct {
-    uint32_t mgk_num;
-    uint32_t length;
-} __attribute__((packed)) MemMapHeader;
-
 static uint64_t ram_size_bytes(void) {
-    MemMapHeader* hdr = (MemMapHeader*)MEMMAP_ADDR;
-    if (hdr->mgk_num != MEMMAP_MGK_NUM || hdr->length == 0) {
-        return 0;
-    }
-
-    uint64_t top = 0;
-    for (uint32_t i = 0; i < hdr->length; i++) {
-        MemMapEntry* e = (MemMapEntry*)(MEMMAP_ADDR + 8 + i * sizeof(MemMapEntry));
-        if (e->type == 7 /* ConventionalMemory */ && e->end > top) {
-            top = e->end;
-        }
-    }
-    return top;
+    return memmap_ram_top();
 }
 
 static void paging_init(void) {
@@ -93,11 +68,6 @@ static void paging_init(void) {
     pml4[0] = ((uint64_t)pdpt & 0x000FFFFFFFFFF000ULL)
              | PAGE_PRESENT | PAGE_WRITE;
 
-    // identity-map the RAM below the MMIO region so the bootloader can use all
-    // of it before installing its own paging. The amount of RAM comes from the
-    // host-provided memory map rather than a hardcoded constant, so changing the
-    // guest's RAM size in the host config needs no firmware edit.
-    // One PDPT entry + one 512-entry PD page of 2 MiB huge pages per 1 GiB.
     uint64_t ram_bytes = ram_size_bytes();
     uint32_t ram_gb = (uint32_t)((ram_bytes + GB - 1) / GB); // round up to cover all RAM
     if (ram_gb == 0) {
@@ -124,21 +94,6 @@ static void paging_init(void) {
         }
     }
 
-    // Map the virtio MMIO region at the top of the canonical address space,
-    // far above any RAM so RAM can grow arbitrarily large without ever
-    // colliding with the MMIO devices.
-    //
-    // The firmware dereferences MMIO at the canonical VIRTUAL base
-    //   0xFFFF_FFFF_FFE0_0000   (bits 63:48 = 0xFFFF, canonical high half),
-    // which is redirected here to the guest-PHYSICAL frame 0x400000000 (16 GiB)
-    // (what the host registers / KVM reports for the MMIO bus cycle). The
-    // physical frame is kept well below MAXPHYADDR (the 48-bit frame 0xFFFF_FFE0_0000
-    // faulted with #PF/RSVD) while still sitting above any RAM of practical size.
-    //
-    //   0xFFFF_FFFF_FFE0_0000 splits as:
-    //     PML4[511]  -> top 512 GiB   (0xFF80_0000_0000 ... 0x1_0000_0000_0000)
-    //     PDPT2[511] -> top 1 GiB     (0xFFC0_0000_0000  ... 0x1_0000_0000_0000)
-    //     PD9[511]   -> final 2 MiB huge page @ 0x400000000 (physical)
     pml4[511] = ((uint64_t)pdpt2 & 0x000FFFFFFFFFF000ULL)
               | PAGE_PRESENT | PAGE_WRITE;
 

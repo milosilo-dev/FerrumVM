@@ -125,3 +125,133 @@ static void __attribute__((noinline)) serial2_puts(const char *s) {
         serial2_putc(*s++);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Logging layer.
+//
+// Firmware diagnostics go to COM2 (the log file). There are two tiers:
+//   - log_* / logf(): meaningful messages (errors, progress, results).
+//   - trace_* / tracef(): fine-grained per-call noise.
+//
+// g_log_enabled controls log_* at runtime. trace_* additionally disappears
+// entirely when LOG_ENABLED is 0, so the noisy tracing can be compiled out.
+// ---------------------------------------------------------------------------
+
+#define LOG_ENABLED 1
+static int g_log_enabled = 1;
+
+static void __attribute__((noinline)) log_putc(char c) {
+    serial2_putc(c);
+}
+
+static void __attribute__((noinline)) log_puts(const char *s) {
+    serial2_puts(s);
+}
+
+static void __attribute__((noinline)) log_putx(uint32_t x) {
+    serial2_putx(x);
+}
+
+#if LOG_ENABLED
+// Fine-grained trace tier. gated at runtime so it can be flipped without
+// recompiling, but the whole call disappears when LOG_ENABLED is 0.
+static void __attribute__((noinline)) trace_puts(const char *s) {
+    if (g_log_enabled) serial2_puts(s);
+}
+static void __attribute__((noinline)) trace_putx(uint32_t x) {
+    if (g_log_enabled) serial2_putx(x);
+}
+static void __attribute__((noinline)) trace_putc(char c) {
+    if (g_log_enabled) serial2_putc(c);
+}
+static void __attribute__((noinline)) tracef(const char *fmt, ...) {
+    if (!g_log_enabled)
+        return;
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    for (const char *p = fmt; *p; p++) {
+        if (*p != '%') { serial2_putc(*p); continue; }
+        switch (*++p) {
+            case 's': serial2_puts(__builtin_va_arg(ap, const char *)); break;
+            case 'x': serial2_putx(__builtin_va_arg(ap, uint32_t)); break;
+            case 'p': {
+                uint64_t v = __builtin_va_arg(ap, uint64_t);
+                serial2_putx((uint32_t)(v >> 32)); serial2_putx((uint32_t)v);
+                break;
+            }
+            case 'u': {
+                unsigned v = __builtin_va_arg(ap, unsigned);
+                char b[12]; unsigned n = 0;
+                do { b[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+                while (n) serial2_putc(b[--n]);
+                break;
+            }
+            case 'c': serial2_putc((char)__builtin_va_arg(ap, int)); break;
+            case '%': serial2_putc('%'); break;
+            default: serial2_putc('%'); serial2_putc(*p); break;
+        }
+    }
+    __builtin_va_end(ap);
+}
+#else
+static inline void trace_puts(const char *s) { (void)s; }
+static inline void trace_putx(uint32_t x) { (void)x; }
+static inline void trace_putc(char c) { (void)c; }
+static inline void tracef(const char *fmt, ...) { (void)fmt; }
+#endif
+
+// Minimal freestanding printf-style logger: %s %x %p %u %c %% (writes to COM2).
+static void __attribute__((noinline)) logf(const char *fmt, ...) {
+    if (!g_log_enabled)
+        return;
+
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+
+    for (const char *p = fmt; *p; p++) {
+        if (*p != '%') {
+            log_putc(*p);
+            continue;
+        }
+        switch (*++p) {
+            case 's': {
+                const char *s = __builtin_va_arg(ap, const char *);
+                if (s) log_puts(s);
+                break;
+            }
+            case 'x': {
+                uint32_t v = __builtin_va_arg(ap, uint32_t);
+                serial2_putx(v);
+                break;
+            }
+            case 'p': {
+                uint64_t v = __builtin_va_arg(ap, uint64_t);
+                serial2_putx((uint32_t)(v >> 32));
+                serial2_putx((uint32_t)v);
+                break;
+            }
+            case 'u': {
+                unsigned v = __builtin_va_arg(ap, unsigned);
+                char buf[12];
+                unsigned n = 0;
+                do { buf[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+                while (n) log_putc(buf[--n]);
+                break;
+            }
+            case 'c': {
+                int c = __builtin_va_arg(ap, int);
+                log_putc((char)c);
+                break;
+            }
+            case '%':
+                log_putc('%');
+                break;
+            default:
+                log_putc('%');
+                log_putc(*p);
+                break;
+        }
+    }
+
+    __builtin_va_end(ap);
+}

@@ -77,7 +77,7 @@ fn main() {
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
-            mem_size: 4 * 1024 * 1024 * 1024, // 5 GiB
+            mem_size: 4 * 1024 * 1024 * 1024, // 4 GiB
             mem_offset: 0x0000,
         }],
         binaries: vec![

@@ -1,15 +1,14 @@
 #include "uefi.h"
 #include "../headers/serial.h"
+#include "../headers/memmap.h"
 #include "../headers/uefi/crc32.h"
 #include "../headers/uefi/stip.h"
 #include "../mem/heap.h"
 
-#define TSC_MHZ 3000
-
 #define STUB(name, ret) \
     static EFI_STATUS EFIAPI stub_##name( \
         void* a, void* b, void* c, void* d) { \
-        serial2_puts("[STUB] " #name "\n"); \
+        trace_puts("[STUB] " #name "\n"); \
         return ret; \
     }
 
@@ -43,15 +42,12 @@ static EFI_STATUS EFIAPI efi_output_string(
 }
 
 static EFI_STATUS EFIAPI stub_Stall(UINTN microseconds) {
-    serial2_puts("[EFI] Stall us=");
-    serial2_putx(microseconds);
-    serial2_puts("\n");
-
+    tracef("stall us=%u\n", microseconds);
     return EFI_SUCCESS;
 }
 
 static EFI_STATUS EFIAPI stub_SetCursorPosition() {
-    serial2_puts("EFI: Move Cursor\n");
+    trace_puts("cursor move\n");
     move_count++;
     if (move_count == 2) {
         serial_puts("\n");
@@ -93,19 +89,10 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
 };
 
 // Ceiling for EFI page allocations: the top of the conventional RAM region,
-// read from the host-provided memory map at 0x7000 instead of a hardcoded
-// constant, so RAM above the 4 GiB boundary (e.g. a 5 GiB VM) can be claimed.
+// read from the host-provided memory map instead of a hardcoded constant, so
+// RAM above the 4 GiB boundary (e.g. a 5 GiB VM) can be claimed.
 static uint64_t pg_limit(void) {
-    uint64_t top = 0;
-    for (uint32_t i = 0; i < memmap_length; i++) {
-        uint8_t *e = (uint8_t *)(0x7000ULL + 8 + (uint64_t)i * 20);
-        uint32_t type = *(uint32_t *)(e + 16);
-        uint64_t end = *(uint64_t *)(e + 8);
-        if (type == 7 /* EfiConventionalMemory */ && end > top) {
-            top = end;
-        }
-    }
-    return top;
+    return memmap_ram_top();
 }
 static uint64_t pg_bump = 0x4000000ULL;
 
@@ -114,7 +101,7 @@ static EFI_STATUS EFIAPI efi_AllocatePool(
     UINTN size,
     VOID **out
 ) {
-    serial2_puts("[EFI] AlloactePool\n");
+    trace_puts("allocate pool\n");
     void* ptr = malloc(size);
     if (!ptr) return EFI_OUT_OF_RESOURCES;
     memset(ptr, 0, size);
@@ -131,13 +118,10 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
 ) {
     (void)memory_type;
 
-    serial2_puts("[EFI] AllocatePages type=0x");
-    serial2_putx(type);
-    serial2_puts(" pages=0x");
-    serial2_putx(pages);
+    tracef("allocate pages type=0x%x pages=0x%x\n", type, pages);
 
     if (pages == 0 || memory == NULL) {
-        serial2_puts(" ret=EFI_INVALID_PARAMETER\n");
+        trace_puts(" ret=INVALID_PARAMETER\n");
         return EFI_INVALID_PARAMETER;
     }
 
@@ -149,26 +133,25 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     case AllocateAddress: {
         addr = *memory;
 
-        serial2_puts(" requested=0x");
-        serial2_putx(addr);
+        tracef(" requested=0x%x\n", addr);
 
         if (addr & 0xFFFULL) {
-            serial2_puts(" ret=EFI_INVALID_PARAMETER\n");
+            trace_puts(" ret=INVALID_PARAMETER\n");
             return EFI_INVALID_PARAMETER;
         }
 
         if (addr < 0x200000ULL) {
-            serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            trace_puts(" ret=OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
         if (addr + size > pg_limit()) {
-            serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            trace_puts(" ret=OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
         *memory = addr;
         map_key++;
-        serial2_puts(" ret=EFI_SUCCESS\n");
+        trace_puts(" ret=SUCCESS\n");
         return EFI_SUCCESS;
     }
 
@@ -176,7 +159,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         uint64_t max = *memory;
 
         if (max < size) {
-            serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            trace_puts(" ret=OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
@@ -187,12 +170,11 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         }
 
         if (addr + size > pg_limit()) {
-            serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            trace_puts(" ret=OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
-        serial2_puts(" returned=0x");
-        serial2_putx(addr);
+        tracef(" returned=0x%x\n", addr);
 
         break;
     }
@@ -201,11 +183,10 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     default: {
         addr = (pg_bump + 0xFFFULL) & ~0xFFFULL;
 
-        serial2_puts(" returned=0x");
-        serial2_putx(addr);
+        tracef(" returned=0x%x\n", addr);
 
         if (addr + size > pg_limit()) {
-            serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
+            trace_puts(" ret=OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
 
@@ -218,7 +199,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
     *memory = addr;
     map_key++;
     memset((void *)(uintptr_t)addr, 0, size);
-    serial2_puts(" ret=EFI_SUCCESS\n");
+    trace_puts(" ret=SUCCESS\n");
 
     return EFI_SUCCESS;
 }
@@ -247,32 +228,12 @@ static struct {
 } gProtocolDB[MAX_PROTOCOLS];
 static int gProtocolCount;
 
-static void efi_dump_protocols_for(EFI_HANDLE handle) {
-    serial2_puts("[EFI] Protocols on handle ");
-    serial2_putx((uint64_t)handle);
-    serial2_puts(":\n");
-    for (int i = 0; i < gProtocolCount; i++) {
-        if (gProtocolDB[i].handle == handle) {
-            serial2_puts("  GUID=");
-            serial2_putx(gProtocolDB[i].guid.Data1); serial2_puts("-");
-            serial2_putx(gProtocolDB[i].guid.Data2); serial2_puts("-");
-            serial2_putx(gProtocolDB[i].guid.Data3); serial2_puts("-");
-            for (int j = 0; j < 8; j++)
-                serial2_putx(gProtocolDB[i].guid.Data4[j]);
-            serial2_puts(" iface=");
-            serial2_putx((uint64_t)gProtocolDB[i].iface);
-            serial2_puts("\n");
-        }
-    }
-}
-
 static EFI_STATUS EFIAPI efi_InstallProtocolInterface(
     EFI_HANDLE *Handle,
     EFI_GUID   *Protocol,
     VOID       *Interface,
     VOID       *DevicePath
 ) {
-    serial2_puts("[EFI] InstallProtocolInterface\n");
     if (Handle && *Handle == NULL)
         *Handle = (EFI_HANDLE)(uint64_t)4;
     if (Handle && Protocol && gProtocolCount < MAX_PROTOCOLS) {
@@ -295,15 +256,8 @@ static void* efi_find_protocol(EFI_HANDLE handle, EFI_GUID* guid) {
 }
 
 void efi_register_protocol(EFI_HANDLE handle, EFI_GUID *guid, void *iface) {
-    serial2_puts("[FIRMWARE] Installed protcol with guid {");
-    serial2_putx(guid->Data1); serial2_puts("-");
-    serial2_putx(guid->Data2); serial2_puts("-");
-    serial2_putx(guid->Data3); serial2_puts("} onto handle 0x");
-    serial2_putx((uint32_t)handle); serial2_puts(" and iface 0x");
-    serial2_putx((uint32_t)iface); serial2_puts("\n");
-
     if (gProtocolCount >= MAX_PROTOCOLS) {
-        serial2_puts("[EFI] Protocol DB full!\n");
+        trace_puts("protocol DB full!\n");
         return;
     }
     gProtocolDB[gProtocolCount].handle = handle;
@@ -315,14 +269,11 @@ void efi_register_protocol(EFI_HANDLE handle, EFI_GUID *guid, void *iface) {
 static EFI_STATUS EFIAPI efi_LocateProtocol(
     EFI_GUID *guid, VOID *reg, VOID **iface
 ) {
-    serial2_puts("[EFI] LocateProtocol {");
-    serial2_putx(guid->Data1); serial2_puts("-");
-    serial2_putx(guid->Data2); serial2_puts("-");
-    serial2_putx(guid->Data3); serial2_puts("} ret=");
+    trace_puts("locate protocol\n");
 
     if (gLoadedImageInstance && efi_guid_match(guid, &gEfiLoadedImageProtocolGuid2)) {
         *iface = gLoadedImageInstance;
-        serial2_puts("LoadedImageProtocol\n");
+        trace_puts(" found loaded-image\n");
         return EFI_SUCCESS;
     }
 
@@ -330,23 +281,25 @@ static EFI_STATUS EFIAPI efi_LocateProtocol(
         for (int i = 0; i < gProtocolCount; i++) {
             if (efi_guid_match(&gProtocolDB[i].guid, guid)) {
                 *iface = gProtocolDB[i].iface;
-                serial2_puts("efi_sucsess\n");
+                trace_puts(" found\n");
                 return EFI_SUCCESS;
             }
         }
     }
 
+    // Unknown protocol: hand back a table of no-op function pointers so the
+    // bootloader's probing calls succeed harmlessly.
     uint64_t* proto = malloc(16 * sizeof(uint64_t));
     if (!proto) {
         *iface = NULL;
-        serial2_puts("out_of_resources\n");
+        trace_puts(" out_of_resources\n");
         return EFI_OUT_OF_RESOURCES;
     }
     for (int i = 0; i < 16; i++)
         proto[i] = (uint64_t)stub_Null;
 
     *iface = proto;
-    serial2_puts("efi_sucsess\n");
+    trace_puts(" success (stubbed)\n");
     return EFI_SUCCESS;
 }
 
@@ -357,11 +310,12 @@ static EFI_STATUS efi_GetVariable(
     UINTN    *DataSize,
     VOID     *Data
 ) {
-    serial2_puts("[EFI] GetVarible\n");
+    trace_puts("get variable\n");
+    return EFI_NOT_FOUND;
 }
 
 static EFI_STATUS EFIAPI stub_FreePool(void* a, void* b, void* c, void* d) {
-    serial2_puts("[EFI] FreePool\n");
+    trace_puts("free pool\n");
     if (!a) return EFI_INVALID_PARAMETER;
     free(a);
     return EFI_SUCCESS;
@@ -373,30 +327,21 @@ static EFI_STATUS EFIAPI efi_GetMemoryMap(uint64_t *MemoryMapSize,
     uint64_t *DescriptorSize, 
     UINT32 *DescriptorVersion) 
 {
-    serial2_puts("[EFI] MemoryMap path=");
+    trace_puts("get memory map");
     uint64_t required_size = memmap_length * sizeof(EFI_MEMORY_DESCRIPTOR);
     if (MemoryMap == NULL || *MemoryMapSize < required_size){
         *MemoryMapSize = required_size;
         *DescriptorSize = sizeof(EFI_MEMORY_DESCRIPTOR);
-        serial2_puts("(BUFFER TOO SMALL) descriptor_size=0x");
-        serial2_putx(sizeof(EFI_MEMORY_DESCRIPTOR));
-        serial2_puts(" requiered_size=0x");
-        serial2_putx(required_size);
-        serial2_puts("\n");
+        tracef("(too small) desc_size=0x%x required=0x%x\n",
+               (uint32_t)sizeof(EFI_MEMORY_DESCRIPTOR), (uint32_t)required_size);
         return EFI_BUFFER_TOO_SMALL;
     }
 
     memmap_to_uefi(MemoryMap, required_size);
 
-    serial2_puts("(SUCCESS) MemoryMapSize=0x");
-    serial2_putx(*MemoryMapSize);
-    serial2_puts(" MapKey=0x");
-    serial2_putx(map_key);
-    serial2_puts(" DescriptorSize=0x");
-    serial2_putx(*DescriptorSize);
-    serial2_puts(" DescriptorVersion=");
-    serial2_putx(*DescriptorVersion);
-    serial2_puts("\n");
+    tracef("(success) size=0x%x key=0x%x desc_size=0x%x ver=%d\n",
+           (uint32_t)*MemoryMapSize, (uint32_t)map_key,
+           (uint32_t)*DescriptorSize, *DescriptorVersion);
 
     *MemoryMapSize = memmap_length * sizeof(EFI_MEMORY_DESCRIPTOR);
     *MapKey = map_key;
@@ -409,11 +354,7 @@ static EFI_STATUS EFIAPI efi_WaitForEvent(UINTN NumberOfEvents,
     EFI_EVENT  *Events,
     UINTN     *Index) 
 {
-    serial2_puts("[EFI] WaitForEvent type=0x");
-    serial2_putx(Events[0]->type);
-    serial2_puts(" length=0x");
-    serial2_putx(NumberOfEvents);
-    serial2_puts("\n");
+    trace_puts("wait for event\n");
 
     while (1) {
         for (UINTN i = 0; i < NumberOfEvents; i++) {
@@ -437,11 +378,7 @@ static EFI_STATUS EFIAPI efi_CreateEvent(
     void *NotifyFunction, void *NotifyContext,
     EFI_EVENT *Event
 ) {
-    serial2_puts("[EFI] CreateEvent type=0x");
-    serial2_putx(Type);
-    serial2_puts(" tpl=0x");
-    serial2_putx(NotifyTpl);
-    serial2_puts("\n");
+    tracef("create event type=0x%x tpl=0x%x\n", Type, NotifyTpl);
 
     if (!Event) return EFI_INVALID_PARAMETER;
 
@@ -454,9 +391,7 @@ static EFI_STATUS EFIAPI efi_CreateEvent(
     ev->type     = (uint8_t)Type;
     *Event = ev;
 
-    serial2_puts("[EFI] CreateEvent -> event=0x");
-    serial2_putx((uint64_t)ev);
-    serial2_puts("\n");
+    trace_puts("create event done\n");
     return EFI_SUCCESS;
 }
 
@@ -465,9 +400,7 @@ static EFI_STATUS EFIAPI efi_CreateEventEx(
     void *NotifyFunction, void *NotifyContext,
     EFI_GUID *EventGroup, EFI_EVENT *Event
 ) {
-    serial2_puts("[EFI] CreateEventEx type=0x");
-    serial2_putx(Type);
-    serial2_puts("\n");
+    tracef("create event ex type=0x%x\n", Type);
     (void)EventGroup;
 
     if (!Event) return EFI_INVALID_PARAMETER;
@@ -503,21 +436,17 @@ STUB(UnloadImage,                   EFI_UNSUPPORTED)
 static EFI_STATUS EFIAPI efi_ExitBootServices(
     EFI_HANDLE ImageHandle, UINTN MapKey
 ) {
-    serial2_puts("[EFI] ExitBootServices key=0x");
-    serial2_putx(MapKey);
-    serial2_puts(" current_key=0x");
-    serial2_putx(map_key);
-    serial2_puts("\n");
+    tracef("exit boot services key=0x%x current_key=0x%x\n", MapKey, map_key);
 
     (void)ImageHandle;
 
     if (MapKey != map_key) {
-        serial2_puts("[EFI] ExitBootServices: invalid map key\n");
+        log_puts("exit boot services: invalid map key\n");
         return EFI_INVALID_PARAMETER;
     }
 
     gExitedBootServices = 1;
-    serial2_puts("[EFI] ExitBootServices: SUCCESS — boot services disabled\n");
+    log_puts("exit boot services: SUCCESS\n");
     return EFI_SUCCESS;
 }
 
@@ -526,9 +455,7 @@ static EFI_STATUS EFIAPI efi_GetNextMonotonicCount(
 ) {
     if (!Count) return EFI_INVALID_PARAMETER;
     *Count = gMonotonicCount++;
-    serial2_puts("[EFI] GetNextMonotonicCount count=0x");
-    serial2_putx(*Count);
-    serial2_puts("\n");
+    tracef("get next monotonic count=0x%x\n", (uint32_t)*Count);
     return EFI_SUCCESS;
 }
 STUB(SetWatchdogTimer,              EFI_SUCCESS)
@@ -551,39 +478,29 @@ static EFI_HANDLE gFakeHandle = (EFI_HANDLE)&gFakeHandleData;
 static EFI_STATUS EFIAPI efi_HandleProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface
 ) {
-    serial2_puts("[EFI] HandleProtocol ");
+    trace_puts("handle protocol\n");
 
     if (!handle || !interface) {
-        serial2_puts("ret=invalid_param, handle=");
-        serial2_putx((uint64_t)handle);
-        serial2_puts(", interface=");
-        serial2_putx((uint64_t)interface);
-        serial2_puts("\n");
+        trace_puts(" ret=INVALID_PARAMETER\n");
         return EFI_INVALID_PARAMETER;
     }
 
-    serial2_puts("handle=");
-    serial2_putx((uint64_t)handle);
-    serial2_puts(" ret=");
-    
     void* found = efi_find_protocol(handle, protocol);
     if (found) {
         *interface = found;
-        serial2_puts("efi_sucsess\n");
+        trace_puts(" ret=SUCCESS\n");
         return EFI_SUCCESS;
     }
 
     if (gLoadedImageInstance && efi_guid_match(protocol, &gEfiLoadedImageProtocolGuid2)) {
-        serial2_puts("LoadedImage DeviceHandle=");
-        serial2_putx((uint64_t)gLoadedImageInstance->DeviceHandle);
-        serial2_puts("\n");
+        trace_puts(" ret=SUCCESS (loaded-image)\n");
 
         *interface = gLoadedImageInstance;
         return EFI_SUCCESS;
     }
 
     *interface = NULL;
-    serial2_puts("un-suported\n");
+    trace_puts(" ret=UNSUPPORTED\n");
     return EFI_UNSUPPORTED;
 }
 
@@ -591,7 +508,7 @@ static EFI_STATUS EFIAPI efi_OpenProtocol(
     EFI_HANDLE handle, EFI_GUID* protocol, VOID** interface,
     EFI_HANDLE agent, EFI_HANDLE controller, UINT32 attributes
 ) {
-    serial2_puts("[EFI] OpenProtocol\n");
+    trace_puts("open protocol\n");
     return efi_HandleProtocol(handle, protocol, interface);
 }
 
@@ -602,10 +519,7 @@ static EFI_STATUS EFIAPI efi_LocateHandleBuffer(
     UINTN *count,
     EFI_HANDLE **buf
 ) {
-    serial2_puts("[EFI] LocateHandleBuffer {");
-    serial2_putx(guid->Data1);serial2_puts("-");
-    serial2_putx(guid->Data2);serial2_puts("-");
-    serial2_putx(guid->Data3);serial2_puts("}\n");
+    trace_puts("locate handle buffer\n");
     if (!count || !buf) return EFI_INVALID_PARAMETER;
     *count = 1;
     *buf = malloc(sizeof(EFI_HANDLE));
@@ -621,13 +535,10 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
     UINTN *BufferSize,
     EFI_HANDLE *Buffer
 ) {
-    serial2_puts("[EFI] LocateHandle {");
-    serial2_putx(guid->Data1);serial2_puts("-");
-    serial2_putx(guid->Data2);serial2_puts("-");
-    serial2_putx(guid->Data3);serial2_puts("} ret=");
+    trace_puts("locate handle\n");
 
     if (!BufferSize) {
-        serial2_puts("invalid_parameter\n");
+        trace_puts(" ret=INVALID_PARAMETER\n");
         return EFI_INVALID_PARAMETER;
     }
 
@@ -645,21 +556,21 @@ static EFI_STATUS EFIAPI efi_LocateHandle(
 
     if (nmatches == 0) {
         *BufferSize = 0;
-        serial2_puts("not_found\n");
+        trace_puts(" ret=NOT_FOUND\n");
         return EFI_NOT_FOUND;
     }
 
     UINTN required = nmatches * sizeof(EFI_HANDLE);
     if (Buffer == NULL || *BufferSize < required) {
         *BufferSize = required;
-        serial2_puts("buffer_too_small\n");
+        trace_puts(" ret=BUFFER_TOO_SMALL\n");
         return EFI_BUFFER_TOO_SMALL;
     }
 
     *BufferSize = required;
     for (UINTN i = 0; i < nmatches; i++)
         Buffer[i] = matches[i];
-    serial2_puts("sucsess\n");
+    trace_puts(" ret=SUCCESS\n");
     return EFI_SUCCESS;
 }
 
@@ -667,7 +578,7 @@ static VOID EFIAPI stub_CopyMem(VOID *dst, VOID *src, UINTN len) { memcpy(dst, s
 static VOID EFIAPI stub_SetMem(VOID *buf, UINTN size, UINT8 val) { memset(buf, val, size); }
 
 static EFI_STATUS EFIAPI stub_Exit(EFI_HANDLE img, EFI_STATUS status, UINTN size, CHAR16 *data) {
-    serial2_puts("[STUB] Exit — halting\n");
+    log_puts("EFI Exit requested - halting\n");
     for (;;) __asm__("hlt");
 }
 
@@ -828,9 +739,7 @@ void format_handle_data(EFI_IMAGE_HANDLE_DATA* handle_data, EFI_SYSTEM_TABLE *st
     handle_data->loaded_image.SystemTable = st;
     handle_data->loaded_image.FilePath    = (EFI_DEVICE_PATH_PROTOCOL*)&gBootFilePath;
 
-    serial2_puts("Boot file path = ");
-    serial2_putx(gBootFilePath.FileNode.Length[0]);
-    serial2_puts("\n");
+    logf("boot file path length=0x%x\n", gBootFilePath.FileNode.Length[0]);
 }
 
 void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
@@ -841,26 +750,17 @@ void efi_init(EFI_SYSTEM_TABLE *st, EFI_HANDLE image_handle) {
     gDiskMedia.LastBlock = (virtio_blk_config.capacity / virtio_blk_config.blk_size) - 1;
     gDiskMedia.BlockSize = virtio_blk_config.blk_size;
 
-    serial2_puts("Virtio Blk Last Block = 0x");
-    serial2_putx(gDiskMedia.LastBlock);
-    serial2_puts("\nVirtio Blk Size = 0x");
-    serial2_putx(gDiskMedia.BlockSize);
-    serial2_puts("\nVirtio Blk Bytes = 0x");
-    serial2_putx(gDiskMedia.LastBlock * gDiskMedia.BlockSize);
-    serial2_puts("\n");
+    logf("virtio blk last_block=0x%x blk_size=0x%x bytes=0x%x\n",
+         gDiskMedia.LastBlock, gDiskMedia.BlockSize,
+         gDiskMedia.LastBlock * gDiskMedia.BlockSize);
 
-    serial2_puts("[EFI] DevicePath iface ptr = 0x");
-    serial2_putx((uint64_t)&gDiskPath);
-    serial2_puts("\n");
+    logf("device path iface ptr=0x%x\n", (uint32_t)(uintptr_t)&gDiskPath);
 
-    serial2_puts("[DEBUG] gDiskPath before register:\n");
-    serial2_puts("  Type="); serial2_putx(gDiskPath.Hd.Header.Type);
-    serial2_puts(" SubType="); serial2_putx(gDiskPath.Hd.Header.SubType);
-    serial2_puts(" PartNum="); serial2_putx(gDiskPath.Hd.PartitionNumber);
-    serial2_puts(" Start="); serial2_putx(gDiskPath.Hd.PartitionStart);
-    serial2_puts(" Size="); serial2_putx(gDiskPath.Hd.PartitionSize);
-    serial2_puts(" SigType="); serial2_putx(gDiskPath.Hd.SignatureType);
-    serial2_puts("\n");
+    log_puts("gDiskPath before register:\n");
+    logf("  Type=0x%x SubType=0x%x PartNum=0x%x Start=0x%x Size=0x%x SigType=0x%x\n",
+         gDiskPath.Hd.Header.Type, gDiskPath.Hd.Header.SubType,
+         gDiskPath.Hd.PartitionNumber, gDiskPath.Hd.PartitionStart,
+         gDiskPath.Hd.PartitionSize, gDiskPath.Hd.SignatureType);
 
     efi_register_protocol(gDiskHandle,
                         &gEfiBlockIoProtocolGuid,

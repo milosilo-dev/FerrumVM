@@ -16,41 +16,39 @@ int load_part_table(SectorRange* range) {
     uint8_t sector[512];
     uint32_t status = virtio_blk_read(0, 512, sector);
     if (status != 0) {
-        serial2_puts("part-table: GPT read failed\n");
+        log_puts("part-table: GPT read failed\n");
         return IO_ERROR;
     }
 
     if (*(uint16_t*)(sector + 0x1FE) != 0xAA55){
-        serial2_puts("part-table: Invalid boot signiture");
-        serial2_puts("part-table: Boot sig = ");
-        serial2_putx(sector[510]); serial_putc(' ');
-        serial2_putx(sector[511]); serial2_puts("\n");
+        logf("part-table: invalid boot signature, boot sig = 0x%x 0x%x\n",
+             sector[510], sector[511]);
         return INVALID_BOOT_SIGNITURE;
     }
 
     uint8_t* part_type = (void*)(sector + 0x1BE + 4);
 
     if (*part_type != 0xEE)  {
-        serial2_puts("part-table: MBR Detected\n");
+        log_puts("part-table: MBR detected\n");
         return NOT_GPT;
     }
 
     uint8_t sector2[512];
     status = virtio_blk_read(1, 512, sector2);
     if (status != 0) {
-        serial2_puts("part-table: GPT read failed\n");
+        log_puts("part-table: GPT read failed\n");
         return IO_ERROR;
     }
 
     GPTHeader* gpt_header = (GPTHeader*)&sector2;
 
     if (memcmp(gpt_header->signature, "EFI PART", 8) != 0) {
-        serial2_puts("part-table: Corrupt GPT");
+        log_puts("part-table: corrupt GPT\n");
         return CORRUPT_GPT;
     }
 
     if (gpt_header->revision != 0x00010000) {
-        serial2_puts("part-table: Incompatible revision");
+        log_puts("part-table: incompatible GPT revision\n");
         return INVALID_REVSION;
     }
 
@@ -64,7 +62,7 @@ int load_part_table(SectorRange* range) {
     uint8_t part_entries_buf[sectors * 512];
     status = virtio_blk_read(table_lba, sectors * 512, part_entries_buf);
     if (status != 0) {
-        serial2_puts("part-table: Failed to read partition table\n");
+        log_puts("part-table: failed to read partition table\n");
         return IO_ERROR;
     }
 
@@ -98,19 +96,15 @@ int load_part_table(SectorRange* range) {
                 16
             );
 
-            serial2_puts("Harddisk Signiture: ");
+            log_puts("harddisk signature: ");
             for (int i = 0; i < 16; i++) {
-                serial2_putx(gDiskPath.Hd.Signature[i]);
+                log_putx(gDiskPath.Hd.Signature[i]);
                 if (i != 15)
-                    serial2_puts("-");
+                    log_puts("-");
             }
-            serial2_puts("\nHarddisk Partition Number: 0x");
-            serial2_putx(gDiskPath.Hd.PartitionNumber);
-            serial2_puts("\nHarddisk Partition Start: 0x");
-            serial2_putx(gDiskPath.Hd.PartitionStart);
-            serial2_puts("\nHarddisk Partition Size: 0x");
-            serial2_putx(gDiskPath.Hd.PartitionSize);
-            serial2_puts("\n");
+            logf("\nharddisk partition number: 0x%x\n", gDiskPath.Hd.PartitionNumber);
+            logf("harddisk partition start: 0x%x\n", gDiskPath.Hd.PartitionStart);
+            logf("harddisk partition size: 0x%x\n", gDiskPath.Hd.PartitionSize);
 
             break;
         }

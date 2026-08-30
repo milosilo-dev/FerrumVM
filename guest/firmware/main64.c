@@ -4,6 +4,7 @@
 #include "headers/gdt.h"
 #include "headers/idt.h"
 #include "headers/halt.h"
+#include "headers/memory_layout.h"
 
 #include "tss.h"
 #include "mem/heap.h"
@@ -42,27 +43,11 @@ void c_main_64(void) {
     init_tss_gdt();
     idt_init();
     init_memmap();
-    init_heap(0x3000000, 0x4000000);
+    init_heap(HEAP_START, HEAP_END);
 
     virtio_blk_init();
-    //virtio_net_init();
 
-    //uint8_t net_buf[100];
-    //uint16_t len = virtio_net_poll_receive(net_buf, 100);
-    //serial_puts("Net result: [");
-    //for (int i = 0; i < len; i++){
-    //    serial_puts("0x");
-    //    serial_putx(net_buf[i]);
-    //    if (i != len - 1){
-    //        serial_puts(", ");
-    //    }
-    //}
-    //serial_puts("]\n");
-
-    //uint8_t net_send_buf[4] = {0x67, 0x67, 0x69, 0x67};
-    //uint8_t len2 = virtio_net_send(net_send_buf, 4);
-
-    uint8_t* file_buf = (uint8_t*)0x1000000;
+    uint8_t* file_buf = (uint8_t*)FILE_BUF_ADDR;
     int status = load_efi_application(file_buf);
     if (status != 0) {
         serial_puts("Failed to load EFI application\n");
