@@ -2,10 +2,10 @@
 #pragma once
 
 #include <stdint.h>
-#define VIRTIO_RNG_BASE     0xFFF00000
-#define VIRTIO_CNT_BASE     0xFFF01000
-#define VIRTIO_BLK_BASE     0xFFF02000
-#define VIRTIO_NET_BASE     0xFFF03000
+#define VIRTIO_RNG_BASE     0xFFFFFFFFFFE00000ULL
+#define VIRTIO_CNT_BASE     0xFFFFFFFFFFE01000ULL
+#define VIRTIO_BLK_BASE     0xFFFFFFFFFFE02000ULL
+#define VIRTIO_NET_BASE     0xFFFFFFFFFFE03000ULL
 
 // MMIO register offsets (all 32-bit reads/writes)
 #define VIRTIO_MMIO_MAGIC           0x000  // must read 0x74726976 ("virt")
@@ -40,10 +40,10 @@
 #define VIRTIO_BLK_T_IN  0   // read from disk
 #define VIRTIO_BLK_T_OUT 1   // write to disk
 
-static inline void mmio_write(uint32_t base, uint32_t offset, uint32_t val) {
+static inline void mmio_write(uint64_t base, uint32_t offset, uint32_t val) {
     *((volatile uint32_t *)(base + offset)) = val;
 }
 
-static inline uint32_t mmio_read(uint32_t base, uint32_t offset) {
+static inline uint32_t mmio_read(uint64_t base, uint32_t offset) {
     return *((volatile uint32_t *)(base + offset));
 }

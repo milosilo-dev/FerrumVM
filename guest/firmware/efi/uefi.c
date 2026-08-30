@@ -92,7 +92,21 @@ static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL gConOut = {
     .Mode               = &gConOutMode,
 };
 
-#define PG_LIMIT 0x80000000ULL
+// Ceiling for EFI page allocations: the top of the conventional RAM region,
+// read from the host-provided memory map at 0x7000 instead of a hardcoded
+// constant, so RAM above the 4 GiB boundary (e.g. a 5 GiB VM) can be claimed.
+static uint64_t pg_limit(void) {
+    uint64_t top = 0;
+    for (uint32_t i = 0; i < memmap_length; i++) {
+        uint8_t *e = (uint8_t *)(0x7000ULL + 8 + (uint64_t)i * 20);
+        uint32_t type = *(uint32_t *)(e + 16);
+        uint64_t end = *(uint64_t *)(e + 8);
+        if (type == 7 /* EfiConventionalMemory */ && end > top) {
+            top = end;
+        }
+    }
+    return top;
+}
 static uint64_t pg_bump = 0x4000000ULL;
 
 static EFI_STATUS EFIAPI efi_AllocatePool(
@@ -148,7 +162,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
             return EFI_OUT_OF_RESOURCES;
         }
 
-        if (addr + size > PG_LIMIT) {
+        if (addr + size > pg_limit()) {
             serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
@@ -172,7 +186,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
             addr = 0x200000ULL;
         }
 
-        if (addr + size > PG_LIMIT) {
+        if (addr + size > pg_limit()) {
             serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }
@@ -190,7 +204,7 @@ static EFI_STATUS EFIAPI efi_AllocatePages(
         serial2_puts(" returned=0x");
         serial2_putx(addr);
 
-        if (addr + size > PG_LIMIT) {
+        if (addr + size > pg_limit()) {
             serial2_puts(" ret=EFI_OUT_OF_RESOURCES\n");
             return EFI_OUT_OF_RESOURCES;
         }

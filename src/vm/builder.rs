@@ -164,6 +164,15 @@ impl VirtualMachine {
         vcpu
     }
 
+    /// APIC MMIO ranges that KVM's in-kernel irqchip (created via `create_irq_chip`)
+    /// emulates. If a user memory slot covers these addresses, the accesses are routed
+    /// to the slot (anonymous RAM) instead of the in-kernel IOAPIC/LAPIC, breaking
+    /// interrupt delivery. We therefore never register a RAM slot over them.
+    const IOAPIC_START: u64 = 0x0000_0000_0FEC0_0000;
+    const IOAPIC_END: u64 = 0x0000_0000_0FEC0_1000;
+    const LAPIC_START: u64 = 0x0000_0000_0FEE0_0000;
+    const LAPIC_END: u64 = 0x0000_0000_0FEE0_1000;
+
     fn new_mem(&mut self, mem_size: usize, mem_offset: u64) {
         let raw_ptr = unsafe {
             mmap(
@@ -181,22 +190,65 @@ impl VirtualMachine {
         }
 
         let userspace_mem = raw_ptr as *mut u8;
+        // Keep a single logical memory region so the guest still sees its RAM as one
+        // contiguous block (used for DMA access via VirtioGuestMemoryHandle). The KVM
+        // slot registration below is what must avoid the APIC hole.
         self.memory_regions.lock().unwrap().push(MemoryRegion::new(
             userspace_mem,
             mem_size,
             mem_offset,
         ));
 
-        let memory_region = kvm_userspace_memory_region {
-            slot: self.memory_regions.lock().unwrap().len() as u32 - 1,
-            flags: 0,
-            guest_phys_addr: mem_offset,
-            memory_size: mem_size as u64,
-            userspace_addr: userspace_mem as u64,
-        };
-
         let vm_lock = self.vm.lock().unwrap();
-        let _mem = unsafe { vm_lock.set_user_memory_region(memory_region) }.unwrap();
+        // Each logical region registered via `new_mem` becomes one or more contiguous
+        // KVM slots. The IRQ chip's internal APIC pages use separate internal slots, so
+        // user slots start at 0.
+        let mut slot = 0u32;
+
+        let start = mem_offset;
+        let end = mem_offset + mem_size as u64;
+
+        // Carve the LAPIC/IOAPIC hole out of the RAM so the in-kernel irqchip owns
+        // 0xFEC00000 and 0xFEE00000. The hole can only exist below 4GB (KVM's in-kernel
+        // APIC is a 32-bit-mapped device), so only split when the range overlaps it.
+        type Range = (u64, u64);
+        let mut segments: Vec<Range> = vec![(start, end)];
+
+        let carve = [
+            (Self::IOAPIC_START, Self::IOAPIC_END),
+            (Self::LAPIC_START, Self::LAPIC_END),
+        ];
+
+        for (hole_start, hole_end) in carve {
+            let mut next: Vec<Range> = Vec::new();
+            for (seg_start, seg_end) in segments {
+                if hole_start >= seg_end || hole_end <= seg_start {
+                    next.push((seg_start, seg_end));
+                } else {
+                    if seg_start < hole_start {
+                        next.push((seg_start, hole_start));
+                    }
+                    if hole_end < seg_end {
+                        next.push((hole_end, seg_end));
+                    }
+                }
+            }
+            segments = next;
+        }
+
+        for (seg_start, seg_end) in segments {
+            let memory_region = kvm_userspace_memory_region {
+                slot,
+                flags: 0,
+                guest_phys_addr: seg_start,
+                memory_size: seg_end - seg_start,
+                userspace_addr: userspace_mem as u64 + (seg_start - start),
+            };
+            unsafe {
+                vm_lock.set_user_memory_region(memory_region).unwrap();
+            }
+            slot += 1;
+        }
     }
 
     fn register_io_device(&self, region: IODeviceRegion) -> bool {

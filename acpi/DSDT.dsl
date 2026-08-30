@@ -37,9 +37,18 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "FVM_DSDT", 0x00001000)
             {
                 Return (ResourceTemplate ()
                 {
-                    Memory32Fixed (ReadWrite,
-                        0xFFF00000,         // Address Base
-                        0x00010000,         // Address Length
+                    QWordMemory (
+                        ResourceConsumer,   // resource usage
+                        PosDecode,           // decode
+                        MinFixed,            // is min fixed
+                        MaxFixed,            // is max fixed
+                        Cacheable,           // cacheable
+                        ReadWrite,           // read/write
+                        0x0000000000000000,  // granularity
+                        0x0000000400000000,  // range minimum
+                        0x000000040000FFFF,  // range maximum
+                        0x0000000000000000,  // translation
+                        0x0000000000010000,  // range length
                         )
                 })
             }

@@ -1,6 +1,6 @@
+#include "headers/serial.h"
 #include "headers/paging.h"
 #include "headers/gdt.h"
-#include "headers/serial.h"
 #include "headers/longmode.h"
 
 void c_main_32(void) {

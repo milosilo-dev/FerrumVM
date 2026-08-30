@@ -68,6 +68,7 @@ typedef uint32_t EFI_TIMER_DELAY;
 #define EfiLoaderData           2
 
 #define EFI_MEMORY_WB           0x8ULL
+#define EFI_MEMORY_RUNTIME      0x8000000000000000ULL
 #define EFI_MEMORY_DESCRIPTOR_VERSION 1
 
 typedef struct {

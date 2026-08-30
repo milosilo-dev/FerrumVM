@@ -22,86 +22,94 @@ pub struct MachineConfig {
 
 impl MachineConfig {
     pub fn inject_memmap(&mut self) {
-        let mem_map: Vec<MemMap> = vec![
+        let ram_end =
+            self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset;
+
+        // The in-kernel KVM irqchip owns these ranges (no user RAM slot backs them), so
+        // they must be excluded from usable RAM. Reserve the whole span from the IOAPIC
+        // through the LAPIC as ONE hole so the memory map stays small (Limine's internal
+        // memory-map array overflows - "Memory map exhausted." - if given too many /
+        // over-fragmented entries).
+        const APIC_RESERVED_START: u64 = 0xFEC0_0000;
+        const APIC_RESERVED_END: u64 = 0xFEE0_1000;
+
+        // Keep the map minimal but non-overlapping: low memory below the first RAM region
+        // is described as a few fixed regions, then a single conventional region spans all
+        // the way up to the end of guest RAM, with the APIC span carved out as reserved.
+        let mut mem_map: Vec<MemMap> = vec![
             // Real mode IVT + BDA - keep reserved
             MemMap {
                 start: 0x00000,
-                end: 0x004FF,
+                end: 0x00500,
                 mem_type: MemType::Reserved as u32,
             },
-            // Free conventional low memory - kernel needs this for trampoline
+            // Free conventional low memory (trampoline)
             MemMap {
                 start: 0x00500,
-                end: 0x7FFFF,
-                mem_type: MemType::ConventionalMemory as u32,
-            },
-            // Conventional low RAM (IVT, BDA, free conventional)
-            MemMap {
-                start: 0x80000,
-                end: 0x9EFFF,
+                end: 0x9F000,
                 mem_type: MemType::ConventionalMemory as u32,
             },
             // EBDA
             MemMap {
                 start: 0x9F000,
-                end: 0x9FFFF,
+                end: 0xA0000,
                 mem_type: MemType::ACPIReclaimMemory as u32,
             },
-            // VGA framebuffer + option ROMs — KVM does NOT back these with RAM
+            // VGA framebuffer + option ROMs + BIOS ROM shadow — KVM does NOT back these
             MemMap {
                 start: 0xA0000,
-                end: 0xDFFFF,
-                mem_type: MemType::Reserved as u32,
-            },
-            // BIOS ROM shadow
-            MemMap {
-                start: 0xE0000,
-                end: 0xFFFFF,
+                end: 0x100000,
                 mem_type: MemType::Reserved as u32,
             },
             // Your firmware image
             MemMap {
                 start: 0x100000,
-                end: 0x1FFFFF,
+                end: 0x200000,
                 mem_type: MemType::BootServicesCode as u32,
             },
-            // Free RAM
+            // Conventional RAM from the firmware image up to the firmware heap
             MemMap {
                 start: 0x200000,
-                end: 0x11FFFFF,
-                mem_type: MemType::ConventionalMemory as u32,
-            },
-            // Whatever lives here (Limine loaded? Reserved?)
-            MemMap {
-                start: 0x1200000,
-                end: 0x14FFFFF,
-                mem_type: MemType::Reserved as u32,
-            },
-            // More free RAM
-            MemMap {
-                start: 0x1500000,
                 end: 0x3000000,
                 mem_type: MemType::ConventionalMemory as u32,
             },
-            // Boot services Heap
+            // Firmware heap (0x3000000-0x4000000): holds the EFI runtime memory map
+            // buffer and runtime tables handed to the OS. Reported as runtime services
+            // data so Linux reserves and keeps it mapped (and Limine doesn't reclaim it
+            // as usable RAM) instead of faulting on the map during efi_set_virtual_address_map.
             MemMap {
                 start: 0x3000000,
                 end: 0x4000000,
-                mem_type: MemType::BootServicesData as u32,
+                mem_type: MemType::RuntimeServicesData as u32,
             },
-            // More free RAM
+            // Conventional RAM from the firmware heap up to the APIC span
             MemMap {
                 start: 0x4000000,
-                end: (self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset),
+                end: APIC_RESERVED_START,
+                mem_type: MemType::ConventionalMemory as u32,
+            },
+            // IOAPIC + LAPIC (in-kernel irqchip) - reserved
+            MemMap {
+                start: APIC_RESERVED_START,
+                end: APIC_RESERVED_END,
+                mem_type: MemType::Reserved as u32,
+            },
+            // Conventional RAM from the APIC span up to the end of guest RAM
+            MemMap {
+                start: APIC_RESERVED_END,
+                end: ram_end,
                 mem_type: MemType::ConventionalMemory as u32,
             },
             // MMIO
             MemMap {
-                start: 0xFFF00000,
-                end: 0xFFF0FFFF,
+                start: 0x400000000,
+                end: 0x400010000,
                 mem_type: MemType::MMIO as u32,
             },
         ];
+
+        // UEFI/Limine expect the memory map sorted by ascending PhysicalStart.
+        mem_map.sort_by_key(|m| m.start);
 
         let mut memmap_bytes = MemMapHeader {
             mgk_num: 0xFE02FE02,
