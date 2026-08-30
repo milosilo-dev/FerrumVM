@@ -54,7 +54,10 @@ The host side is written in Rust and has the role of managing vCPUs, handling VM
 
 When managing vCPUs, KVM handles the bulk of the work, which means the code I have for this role is fairly standard compared to what other VMMs would do.
 
-The main role of the vCPU struct in `vcpu.rs` is to set up the CPU registers initially before handing control over to my assembly stub. I have tried to design this aspect of the program to be scalable, so that if I want to add multiple vCPUs in the future, there will not need to be a huge code change.
+The main role of the vCPU struct in `vcpu.rs` is to set up the CPU registers initially before handing control over to my assembly stub. I have tried to design this aspect of the program to be scalable.
+
+### Multi core
+The VM also suports multipule vCPU's and allows them to handle VM Exits in parrelel, this allows for multicore within the virtual machine. THis is achived by running each vCPU's run loop in a diffrent operating system thread which menas i can leave it up to the host kernel to deside how the laod should be split across the physical cores availible.
 
 ### Handling VM Exits
 
@@ -80,6 +83,7 @@ The total list of devices that I support at the moment is:
 - VirtIO BLK device (disk)
 - VirtIO NET device (networking)
 - VirtIO RNG device (randomness)
+- VirtIO FS device (shared folder)
 
 VirtIO is a protocol which allows devices to communicate through shared sections of memory rather than relying solely on the MMIO and I/O methods discussed earlier. I use it in FerrumVM for more complicated devices, such as block devices, which need to handle large amounts of shared memory.
 
@@ -91,6 +95,16 @@ As previously stated, networking in ferrum is done using the virtio-net protocol
 The ethernet frames are moved back and forth on two seperate virtio queues, one for tx and one for rx. This allows for effishent transport of the frames between the guest and host.
 
 On both the guest and host, there is setup that has too be done, like tying the network interface to an IP address and setting up packet forwarding from the host to the TAP Device.
+
+## Shared folders
+You are able to mount a shared fodler inside of the virtual machine using FUSE (File System in User Space), this allows for the virtual machine to have full acsess to the folder just the same as any other program on your computer. 
+
+This is mainly used when compiling on the VM as the whole project does not need to be copied to the Disk Image and can be streamed in over Virtio instead.
+
+## ACPI
+I Generate custom ACPI tables from the host and inject them at a preditermined address, these are passed through to linux so it knows what hadrware to expect from the virtual machine. This includes mapping all the MMIO devices, their IRQ lines and their address range so that linux knows what it has been provided with.
+
+I also map my VCPU's inside of the MADT tables, this tells the guest about what VCPU's are availible for it too bring up as well as how to send IRQ's to them seperatly.
 
 ## The Custom firmware
 
@@ -175,11 +189,11 @@ FerrumVM is currently capable of:
 - [x] VirtIO block device
 - [x] VirtIO RNG
 - [x] VirtIO Net
-- [ ] VirtIO FS
+- [x] VirtIO FS
+- [x] Multi-Core
 - [ ] VirtIO Gpu
 - [ ] VirtIO Console
 - [ ] PCI Support
-- [ ] Multi-Core
 
 ## AI Usage
 
