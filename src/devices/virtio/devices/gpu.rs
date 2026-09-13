@@ -3,6 +3,8 @@ use crate::devices::virtio::virtio::VirtioGuestMemoryHandle;
 use crate::devices::virtio::virtio::VirtioQueue;
 use crate::platform::display::DisplayBackend;
 
+use std::mem;
+
 pub struct VirtioGpuConfig {
     events_read: u32,
     events_clear: u32,
@@ -36,6 +38,24 @@ impl VirtioGpuConfig {
 
         buf.resize(length, 0);
         buf
+    }
+
+    pub fn write_field(&mut self, offset: usize, data: &[u8]) {
+        let field = offset / 4;
+        let start = offset % 4;
+        if start + data.len() > 4 && (offset / 4) == ((offset + data.len() - 1) / 4) {
+            return;
+        }
+
+        let mask = (!0u32 << (start * 8)) & (!0u32 >> (32 - (start + data.len()) * 8));
+        let mut buf = [0u8; 4];
+        buf[start..start + data.len()].copy_from_slice(data);
+
+        let cur = match field {
+            1 => self.events_clear, // the driver->device field
+            _ => return,
+        };
+        self.events_clear = (cur & !mask) | (u32::from_le_bytes(buf) & mask);
     }
 }
 
@@ -92,6 +112,10 @@ impl VirtioDevice for VirtioGpu {
 
     fn read_config(&self, length: usize) -> Vec<u8> {
         self.config.to_bytes(length)
+    }
+
+    fn write_config(&mut self, offset: usize, data: &[u8]) {
+        self.config.write_field(offset, data);
     }
 
     fn update(&mut self, _queues: &mut [VirtioQueue]) -> bool {

@@ -12,7 +12,7 @@
         packages = with pkgs; [
           rustc
           cargo
-          gcc-unwrapped 
+          gcc-unwrapped
           binutils-unwrapped
           pkg-config
           pkgsCross.i686-embedded.buildPackages.gcc
@@ -21,6 +21,7 @@
           parted
           pkgsCross.mingwW64.stdenv.cc
           acpica-tools
+          SDL2
         ];
       };
     };
