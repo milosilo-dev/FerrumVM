@@ -3,8 +3,6 @@ use crate::devices::virtio::virtio::VirtioGuestMemoryHandle;
 use crate::devices::virtio::virtio::VirtioQueue;
 use crate::platform::display::DisplayBackend;
 
-use std::mem;
-
 pub struct VirtioGpuConfig {
     events_read: u32,
     events_clear: u32,
