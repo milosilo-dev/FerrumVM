@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::machine_config::memory_region::{GuestMemoryHandle, MemoryRegion};
 
+pub const VIRTQ_DESC_F_NEXT: u16 = 0b00000000_00000001;
+pub const VIRTQ_DESC_F_WRITE: u16 = 0b00000000_00000010;
+
 pub type IrqCallback = Arc<dyn Fn() + Send + Sync>;
 
 pub trait VirtioDevice {

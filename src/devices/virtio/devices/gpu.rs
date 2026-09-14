@@ -1,7 +1,50 @@
+use crate::devices::virtio::virtio::VIRTQ_DESC_F_NEXT;
 use crate::devices::virtio::virtio::VirtioDevice;
 use crate::devices::virtio::virtio::VirtioGuestMemoryHandle;
 use crate::devices::virtio::virtio::VirtioQueue;
 use crate::platform::display::DisplayBackend;
+
+/// Query display capabilities
+const VIRTIO_GPU_CMD_GET_DISPLAY_INFO: u32 = 0x0100;
+/// Create 2D rendering resources
+const VIRTIO_GPU_CMD_RESOURCE_CREATE_2D: u32 = 0x0101;
+/// Release GPU resources
+const VIRTIO_GPU_CMD_RESOURCE_UNREF: u32 = 0x0102;
+/// Configure display output
+const VIRTIO_GPU_CMD_SET_SCANOUT: u32 = 0x0103;
+/// Make rendering visible
+const VIRTIO_GPU_CMD_RESOURCE_FLUSH: u32 = 0x0104;
+/// Transfer framebuffer to GPU
+const VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D: u32 = 0x0105;
+/// Attach memory to resources
+const VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0106;
+/// Detach memory from resources
+const VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
+/// Retrieve monitor EDID data
+const VIRTIO_GPU_CMD_GET_EDID: u32 = 0x010A;
+
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuCtrlHdr {
+    typ: u32,
+    flags: u32,
+    fence_id: u64,
+    ctx_id: u32,
+    ring_idx: u32,
+}
+
+impl VirtioGpuCtrlHdr {
+    /// Converts a stream of bytes into this struct
+    /// Makes it easy to phase fromn the Virtio Queue
+    pub fn from_bytes(data: Vec<u8>) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first().expect("Buffer too small"))
+    }
+}
 
 pub struct VirtioGpuConfig {
     events_read: u32,
@@ -97,7 +140,42 @@ impl VirtioDevice for VirtioGpu {
         match queue_sel {
             0 => {
                 // Control Queue
-                while let Some(_head) = queue.pop_avail(guest_memory) {}
+                while let Some(head) = queue.pop_avail(guest_memory) {
+                    let header_desc = queue.get_descriptor(guest_memory, head);
+                    if header_desc.flags & VIRTQ_DESC_F_NEXT == 0 {
+                        continue;
+                    }
+
+                    let mut header_bytes = vec![0; header_desc.len as usize];
+                    guest_memory.read_guest_memory(header_desc.addr, &mut header_bytes);
+
+                    let Some(header) = VirtioGpuCtrlHdr::from_bytes(header_bytes) else {
+                        continue;
+                    };
+
+                    let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next);
+                    let mut gpu_cmd_bytes = vec![0; header_desc.len as usize];
+                    guest_memory.read_guest_memory(gpu_cmd_desc.addr, &mut gpu_cmd_bytes);
+
+                    let rest: u32 = match header.typ {
+                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_UNREF => 0,
+                        VIRTIO_GPU_CMD_SET_SCANOUT => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_FLUSH => 0,
+                        VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING => 0,
+                        VIRTIO_GPU_CMD_GET_EDID => 0,
+                        _ => 0,
+                    };
+
+                    queue.push_used(
+                        guest_memory,
+                        head,
+                        (header_desc.len + gpu_cmd_desc.len + rest) as u32,
+                    );
+                }
             }
             1 => {
                 // Cursor Queue
