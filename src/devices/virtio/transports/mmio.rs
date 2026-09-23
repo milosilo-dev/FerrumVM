@@ -32,6 +32,7 @@ pub struct MMIOTransport {
     device_features_sel: u32,
     driver_features_sel: u32,
     driver_features: u64,
+    shm_sel: u32,
 
     irq_handler: Option<Arc<Mutex<IRQHandler>>>,
     irq_sel: u32,
@@ -51,6 +52,7 @@ impl MMIOTransport {
             device_features_sel: 0,
             driver_features_sel: 0,
             driver_features: 0,
+            shm_sel: 0,
             irq_handler: None,
             irq_sel,
             guest_memory: None,
@@ -104,6 +106,14 @@ impl MMIODevice for MMIOTransport {
                 }
                 val
             }
+            // This device supports no shared memory regions, so report the
+            // selected region's length as 0xFFFFFFFF (i.e. doesn't exist).
+            // Returning 0 here makes Linux treat a region at address 0 as
+            // present, which breaks device probe.
+            0x0B0 | 0x0B4 => {
+                let _selected_region = self.shm_sel;
+                !0u32
+            }
             _ => 0,
         } as u64)
             .to_le_bytes();
@@ -128,6 +138,9 @@ impl MMIODevice for MMIOTransport {
             }
             0x024 => {
                 self.driver_features_sel = read_u32_from_data(data);
+            }
+            0x0AC => {
+                self.shm_sel = read_u32_from_data(data);
             }
             0x028 => {}
             0x030 => {
@@ -176,6 +189,7 @@ impl MMIODevice for MMIOTransport {
                     self.device_features_sel = 0;
                     self.driver_features_sel = 0;
                     self.driver_features = 0;
+                    self.shm_sel = 0;
                     self.set_irq_line(false);
                     self.device.as_mut().reset();
                 }

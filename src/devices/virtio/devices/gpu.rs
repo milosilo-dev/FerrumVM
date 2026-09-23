@@ -1,4 +1,7 @@
+use std::mem;
+
 use crate::devices::virtio::virtio::VIRTQ_DESC_F_NEXT;
+use crate::devices::virtio::virtio::VIRTQ_DESC_F_WRITE;
 use crate::devices::virtio::virtio::VirtioDevice;
 use crate::devices::virtio::virtio::VirtioGuestMemoryHandle;
 use crate::devices::virtio::virtio::VirtioQueue;
@@ -23,6 +26,11 @@ const VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
 /// Retrieve monitor EDID data
 const VIRTIO_GPU_CMD_GET_EDID: u32 = 0x010A;
 
+/// Device filled up write descirptor with display info
+const VIRTIO_GPU_RESP_OK_DISPLAY_INFO: u32 = 0x1101;
+
+/// The Header for all GPU commands
+/// use `from_bytes()` to get the current instance from a bytes vector
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 struct VirtioGpuCtrlHdr {
@@ -34,8 +42,19 @@ struct VirtioGpuCtrlHdr {
 }
 
 impl VirtioGpuCtrlHdr {
+    /// Creates a new version of the struct as simply as possible
+    pub fn new(typ: u32) -> Self {
+        Self {
+            typ,
+            flags: 0,
+            fence_id: 0,
+            ctx_id: 0,
+            ring_idx: 0,
+        }
+    }
+
     /// Converts a stream of bytes into this struct
-    /// Makes it easy to phase fromn the Virtio Queue
+    /// Makes it easy to phase from the Virtio Queue
     pub fn from_bytes(data: Vec<u8>) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
@@ -44,8 +63,108 @@ impl VirtioGpuCtrlHdr {
         let (_, body, _) = unsafe { data.align_to::<Self>() };
         Some(*body.first().expect("Buffer too small"))
     }
+
+    /// Creates a stream of bytes from the struct info
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let size = mem::size_of::<Self>();
+        let mut vec = Vec::with_capacity(size);
+
+        unsafe {
+            // Cast struct reference to u8 slice
+            let bytes = std::slice::from_raw_parts(self as *const Self as *const u8, size);
+            vec.extend_from_slice(bytes);
+        }
+
+        vec
+    }
 }
 
+/// Info about one display on the GPU, can have multipule
+/// on every device
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuDisplayInfo {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    enabled: u32,
+    flags: u32,
+}
+
+impl VirtioGpuDisplayInfo {
+    /// Create a new display from a display backend
+    pub fn new(backend: &Box<dyn DisplayBackend + Send>) -> Self {
+        let (width, height) = backend.get_display_size();
+
+        // Just one display for now
+        Self {
+            x: 0,
+            y: 0,
+            width,
+            height,
+            enabled: 1,
+            flags: 0,
+        }
+    }
+
+    /// Creates an empty display to fill the array
+    pub fn empty() -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            enabled: 0,
+            flags: 0,
+        }
+    }
+
+    /// Converts a stream of bytes into this struct
+    /// Makes it easy to phase fromn the Virtio Queue
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let size = mem::size_of::<Self>();
+        let mut vec = Vec::with_capacity(size);
+
+        unsafe {
+            // Cast struct reference to u8 slice
+            let bytes = std::slice::from_raw_parts(self as *const Self as *const u8, size);
+            vec.extend_from_slice(bytes);
+        }
+
+        vec
+    }
+}
+
+struct VirtioGpuDisplayInfoResponse {
+    hdr: VirtioGpuCtrlHdr,
+    display_list: [VirtioGpuDisplayInfo; 16],
+}
+
+impl VirtioGpuDisplayInfoResponse {
+    pub fn new(displays: Vec<VirtioGpuDisplayInfo>) -> Self {
+        let mut display_list: [VirtioGpuDisplayInfo; 16] = [VirtioGpuDisplayInfo::empty(); 16];
+        for i in 0..displays.len().min(16) {
+            display_list[i] = displays[i];
+        }
+
+        Self {
+            hdr: VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_DISPLAY_INFO),
+            display_list,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut hdr_bytes = self.hdr.to_bytes();
+        for display in self.display_list {
+            hdr_bytes.extend(display.to_bytes());
+        }
+        hdr_bytes
+    }
+}
+
+/// Config for this device, for gpu it has writable elements to make sure to define
+/// it as mutable when using it.
 pub struct VirtioGpuConfig {
     events_read: u32,
     events_clear: u32,
@@ -57,7 +176,7 @@ impl VirtioGpuConfig {
     /// Create a new Virtio GPU Config
     /// enforces the limits defined in the spec (https://docs.oasis-open.org/virtio/virtio/v1.3/csd01/virtio-v1.3-csd01.html#x1-3960007)
     pub fn new(events_clear: u32, num_scanouts: u32, num_capsets: u32) -> Option<Self> {
-        if num_scanouts < 16 {
+        if num_scanouts == 0 || num_scanouts > 16 {
             return None;
         }
 
@@ -100,20 +219,21 @@ impl VirtioGpuConfig {
     }
 }
 
+/// Virtio GPU Device
 pub struct VirtioGpu {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     config: VirtioGpuConfig,
-    _window: Box<dyn DisplayBackend>,
+    window: Box<dyn DisplayBackend + Send>,
 }
 
 impl VirtioGpu {
     /// Creates a new vitio GPU device which will provide
     /// the simplest form of video out for the guest
-    pub fn new(_window: Box<dyn DisplayBackend>) -> Self {
+    pub fn new(window: Box<dyn DisplayBackend + Send>) -> Self {
         Self {
             guest_memory: None,
             config: VirtioGpuConfig::new(0, 1, 0).unwrap(),
-            _window,
+            window,
         }
     }
 }
@@ -142,7 +262,9 @@ impl VirtioDevice for VirtioGpu {
                 // Control Queue
                 while let Some(head) = queue.pop_avail(guest_memory) {
                     let header_desc = queue.get_descriptor(guest_memory, head);
-                    if header_desc.flags & VIRTQ_DESC_F_NEXT == 0 {
+                    if header_desc.flags & VIRTQ_DESC_F_NEXT == 0
+                        || header_desc.flags & VIRTQ_DESC_F_WRITE != 0
+                    {
                         continue;
                     }
 
@@ -150,15 +272,24 @@ impl VirtioDevice for VirtioGpu {
                     guest_memory.read_guest_memory(header_desc.addr, &mut header_bytes);
 
                     let Some(header) = VirtioGpuCtrlHdr::from_bytes(header_bytes) else {
+                        queue.push_used(guest_memory, head, 0);
                         continue;
                     };
 
-                    let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next);
-                    let mut gpu_cmd_bytes = vec![0; header_desc.len as usize];
-                    guest_memory.read_guest_memory(gpu_cmd_desc.addr, &mut gpu_cmd_bytes);
-
-                    let rest: u32 = match header.typ {
-                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => 0,
+                    let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next); // Response descriptor
+                    let written: usize = match header.typ {
+                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => {
+                            let displays = vec![VirtioGpuDisplayInfo::new(&self.window)];
+                            let buf = VirtioGpuDisplayInfoResponse::new(displays).to_bytes();
+                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
+                                || buf.len() > gpu_cmd_desc.len as usize
+                            {
+                                0
+                            } else {
+                                guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
+                                buf.len()
+                            }
+                        }
                         VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => 0,
                         VIRTIO_GPU_CMD_RESOURCE_UNREF => 0,
                         VIRTIO_GPU_CMD_SET_SCANOUT => 0,
@@ -170,11 +301,7 @@ impl VirtioDevice for VirtioGpu {
                         _ => 0,
                     };
 
-                    queue.push_used(
-                        guest_memory,
-                        head,
-                        (header_desc.len + gpu_cmd_desc.len + rest) as u32,
-                    );
+                    queue.push_used(guest_memory, head, written as u32);
                 }
             }
             1 => {

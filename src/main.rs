@@ -1,5 +1,8 @@
 use std::{
-    fs::{self, File}, os::fd::AsRawFd, path::PathBuf, sync::Arc,
+    fs::{self, File},
+    os::fd::AsRawFd,
+    path::PathBuf,
+    sync::Arc,
 };
 
 use ferrumvm::{
@@ -10,7 +13,8 @@ use ferrumvm::{
         timer::Pit,
         virtio::{
             devices::{
-                blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, net::NetVirtio, rng::RngVirtio,
+                blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, gpu::VirtioGpu, net::NetVirtio,
+                rng::RngVirtio,
             },
             transports::mmio::MMIOTransport,
         },
@@ -20,7 +24,9 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
-    platform::{networking::tap::TAPDevice, shared_folder::SharedFolder},
+    platform::{
+        networking::tap::TAPDevice, sdl::context::FerrumSDLContext, shared_folder::SharedFolder,
+    },
     vm::vm::VirtualMachine,
 };
 
@@ -71,6 +77,13 @@ fn main() {
         2,
         7,
     ));
+    let gpu = Box::new(MMIOTransport::new(
+        Box::new(VirtioGpu::new(Box::new(
+            FerrumSDLContext::new(100, 100).unwrap(),
+        ))),
+        2,
+        10,
+    ));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
@@ -98,6 +111,7 @@ fn main() {
             MMIODeviceRegion::new(0x400002000..=0x400002FFF, blk),
             MMIODeviceRegion::new(0x400003000..=0x400003FFF, net),
             MMIODeviceRegion::new(0x400004000..=0x400004FFF, fuse),
+            MMIODeviceRegion::new(0x400005000..=0x400005FFF, gpu),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here

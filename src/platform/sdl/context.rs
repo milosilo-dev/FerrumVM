@@ -8,6 +8,10 @@ pub struct FerrumSDLContext {
     canvas: Canvas<Window>,
 }
 
+// SDL's Canvas wraps Rc internally, so it is not Send by default.
+// The VMM drives this device from a single thread, so this is safe.
+unsafe impl Send for FerrumSDLContext {}
+
 impl FerrumSDLContext {
     pub fn new(width: u32, height: u32) -> Option<Self> {
         let sdl_context = sdl2::init().ok()?;
