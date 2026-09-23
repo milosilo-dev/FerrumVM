@@ -2,7 +2,7 @@
  * Intel ACPI Component Architecture
  * AML/ASL+ Disassembler version 20251212 (64-bit version)
  * Copyright (c) 2000 - 2025 Intel Corporation
- * 
+ *
  * Disassembling to symbolic ASL+ operators
  *
  * Disassembly of acpi/DSDT.aml
@@ -102,7 +102,16 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "FVM_DSDT", 0x00001000)
                     Return (0x0F)
                 }
             }
+
+            Device (GPU)
+            {
+                Name (_UID, 0x06)  // _UID: Unique ID
+                Name (_ADR, 0x5000)  // _ADR: Address
+                Method (_STA, 0, NotSerialized)  // _STA: Status
+                {
+                    Return (0x0F)
+                }
+            }
         }
     }
 }
-

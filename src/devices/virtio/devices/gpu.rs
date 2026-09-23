@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::mem;
 
 use crate::devices::virtio::virtio::VIRTQ_DESC_F_NEXT;
@@ -26,6 +27,8 @@ const VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
 /// Retrieve monitor EDID data
 const VIRTIO_GPU_CMD_GET_EDID: u32 = 0x010A;
 
+/// Empty responce from a given command
+const VIRTIO_GPU_RESP_OK_NODATA: u32 = 0x1100;
 /// Device filled up write descirptor with display info
 const VIRTIO_GPU_RESP_OK_DISPLAY_INFO: u32 = 0x1101;
 
@@ -55,7 +58,7 @@ impl VirtioGpuCtrlHdr {
 
     /// Converts a stream of bytes into this struct
     /// Makes it easy to phase from the Virtio Queue
-    pub fn from_bytes(data: Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -163,6 +166,27 @@ impl VirtioGpuDisplayInfoResponse {
     }
 }
 
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuResourceCreate2D {
+    hdr: VirtioGpuCtrlHdr,
+    resource_id: u32,
+    format: u32,
+    width: u32,
+    height: u32,
+}
+
+impl VirtioGpuResourceCreate2D {
+    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first().expect("Buffer too small"))
+    }
+}
+
 /// Config for this device, for gpu it has writable elements to make sure to define
 /// it as mutable when using it.
 pub struct VirtioGpuConfig {
@@ -219,11 +243,38 @@ impl VirtioGpuConfig {
     }
 }
 
+#[repr(C, packed)]
+struct VirtioGpuMemEntry {
+    addr: u64,
+    length: u32,
+    padding: u32,
+}
+
+struct GpuResource {
+    format: u32,
+    width: u32,
+    height: u32,
+    backing: Vec<VirtioGpuMemEntry>,
+}
+
+impl GpuResource {
+    /// Create a new GPU Resource, no Backings yet
+    pub fn new(format: u32, width: u32, height: u32) -> Self {
+        Self {
+            format,
+            width,
+            height,
+            backing: vec![],
+        }
+    }
+}
+
 /// Virtio GPU Device
 pub struct VirtioGpu {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     config: VirtioGpuConfig,
     window: Box<dyn DisplayBackend + Send>,
+    resources: HashMap<u32, GpuResource>,
 }
 
 impl VirtioGpu {
@@ -234,6 +285,7 @@ impl VirtioGpu {
             guest_memory: None,
             config: VirtioGpuConfig::new(0, 1, 0).unwrap(),
             window,
+            resources: HashMap::new(),
         }
     }
 }
@@ -271,26 +323,50 @@ impl VirtioDevice for VirtioGpu {
                     let mut header_bytes = vec![0; header_desc.len as usize];
                     guest_memory.read_guest_memory(header_desc.addr, &mut header_bytes);
 
-                    let Some(header) = VirtioGpuCtrlHdr::from_bytes(header_bytes) else {
+                    let Some(header) = VirtioGpuCtrlHdr::from_bytes(&header_bytes) else {
                         queue.push_used(guest_memory, head, 0);
                         continue;
                     };
 
                     let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next); // Response descriptor
                     let written: usize = match header.typ {
-                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => {
+                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => 'get_display_info: {
                             let displays = vec![VirtioGpuDisplayInfo::new(&self.window)];
                             let buf = VirtioGpuDisplayInfoResponse::new(displays).to_bytes();
                             if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
                                 || buf.len() > gpu_cmd_desc.len as usize
                             {
-                                0
-                            } else {
-                                guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                                buf.len()
+                                break 'get_display_info 0;
                             }
+
+                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
+                            buf.len()
                         }
-                        VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => 'create_resource_2d: {
+                            let Some(resource_info) =
+                                VirtioGpuResourceCreate2D::from_bytes(&header_bytes)
+                            else {
+                                break 'create_resource_2d 0;
+                            };
+
+                            self.resources.insert(
+                                resource_info.resource_id,
+                                GpuResource::new(
+                                    resource_info.format,
+                                    resource_info.width,
+                                    resource_info.height,
+                                ),
+                            );
+
+                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
+                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
+                                || buf.len() > gpu_cmd_desc.len as usize
+                            {
+                                break 'create_resource_2d 0;
+                            }
+                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
+                            buf.len()
+                        }
                         VIRTIO_GPU_CMD_RESOURCE_UNREF => 0,
                         VIRTIO_GPU_CMD_SET_SCANOUT => 0,
                         VIRTIO_GPU_CMD_RESOURCE_FLUSH => 0,

@@ -79,7 +79,7 @@ fn main() {
     ));
     let gpu = Box::new(MMIOTransport::new(
         Box::new(VirtioGpu::new(Box::new(
-            FerrumSDLContext::new(100, 100).unwrap(),
+            FerrumSDLContext::new(500, 500).unwrap(),
         ))),
         2,
         10,
