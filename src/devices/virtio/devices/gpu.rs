@@ -187,6 +187,22 @@ impl VirtioGpuResourceCreate2D {
     }
 }
 
+struct VirtioGpuResourceDrop {
+    hdr: VirtioGpuCtrlHdr,
+    resorce_id: u32,
+}
+
+impl VirtioGpuResourceDrop {
+    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first().expect("Buffer too small"))
+    }
+}
+
 /// Config for this device, for gpu it has writable elements to make sure to define
 /// it as mutable when using it.
 pub struct VirtioGpuConfig {
@@ -367,8 +383,27 @@ impl VirtioDevice for VirtioGpu {
                             guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
                             buf.len()
                         }
-                        VIRTIO_GPU_CMD_RESOURCE_UNREF => 0,
-                        VIRTIO_GPU_CMD_SET_SCANOUT => 0,
+                        VIRTIO_GPU_CMD_RESOURCE_UNREF => 'unref_resource {
+                            let Some(resource_info) =
+                                VirtioGpuResourceDrop::from_bytes(&header_bytes)
+                            else {
+                                break 'create_resource_2d 0;
+                            };
+
+                            self.resources.remove(resource_info.resorce_id);
+
+                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
+                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
+                                || buf.len() > gpu_cmd_desc.len as usize
+                            {
+                                break 'create_resource_2d 0;
+                            }
+                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
+                            buf.len()
+                        },
+                        VIRTIO_GPU_CMD_SET_SCANOUT => {
+
+                        },
                         VIRTIO_GPU_CMD_RESOURCE_FLUSH => 0,
                         VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D => 0,
                         VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING => 0,
