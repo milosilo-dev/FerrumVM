@@ -1,6 +1,7 @@
 # /etc/inittab
 
-::sysinit:/bin/sh /etc/network/setup.sh
+# Mount /proc, /sys and /dev, then bring up the network
+::sysinit:/etc/init.d/rcS
 
 # Put a getty on the serial port
 ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100

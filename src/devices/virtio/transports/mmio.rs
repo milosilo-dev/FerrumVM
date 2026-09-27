@@ -1,7 +1,4 @@
-use std::{
-    io::{self, Write},
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use crate::{
     device_maps::mmio::MMIODevice,
@@ -72,8 +69,6 @@ impl MMIOTransport {
 impl MMIODevice for MMIOTransport {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
         if addr >= 0x100 {
-            io::stdout().flush().unwrap();
-
             let offset = (addr - 0x100) as usize;
             let cfg_bytes = self.device.read_config(offset + length);
 

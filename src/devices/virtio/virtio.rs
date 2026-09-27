@@ -50,8 +50,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + 1 <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && 1 <= size - (addr - start) {
                 let data = mem_region
                     .read((addr - mem_region.mem_offset) as usize, 1 as usize)
                     .unwrap();
@@ -67,8 +67,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = mem_region
                     .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
                     .unwrap();
@@ -86,8 +86,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = mem_region
                     .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
                     .unwrap();
@@ -105,8 +105,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = mem_region
                     .read((addr - mem_region.mem_offset) as usize, LENGTH as usize)
                     .unwrap();
@@ -120,19 +120,35 @@ impl VirtioGuestMemoryHandle {
         0
     }
 
-    pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>) {
+    /// Reads `len` bytes at `addr` and returns them as a freshly allocated
+    /// `Vec`. Returns a zeroed buffer if the range is not backed by guest RAM.
+    ///
+    /// Prefer this over [`Self::read_guest_memory`] on hot paths: that one
+    /// needs a pre-sized buffer and then throws it away, costing two
+    /// allocations per call.
+    pub fn read_guest_memory_alloc(&self, addr: u64, len: usize) -> Vec<u8> {
+        if len == 0 {
+            return Vec::new();
+        }
+
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + buf.len() as u64 <= end {
-                let data = mem_region
-                    .read((addr - mem_region.mem_offset) as usize, buf.len())
-                    .unwrap();
-                *buf = data;
-                return;
+            let size = mem_region.mem_size as u64;
+            // Written this way round so a guest address near u64::MAX cannot
+            // wrap `addr + len` and pass the bounds check.
+            if addr >= start && len as u64 <= size - (addr - start) {
+                if let Some(data) = mem_region.read((addr - start) as usize, len) {
+                    return data;
+                }
             }
         }
+
+        vec![0u8; len]
+    }
+
+    pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>) {
+        *buf = self.read_guest_memory_alloc(addr, buf.len());
     }
 
     pub fn write_u8(&mut self, addr: u64, val: u8) {
@@ -141,8 +157,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = &val.to_le_bytes();
                 mem_region.write(data, (addr - mem_region.mem_offset) as usize);
                 return;
@@ -157,8 +173,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = &val.to_le_bytes();
                 mem_region.write(data, (addr - mem_region.mem_offset) as usize);
                 return;
@@ -173,8 +189,8 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + LENGTH <= end {
+            let size = mem_region.mem_size as u64;
+            if addr >= start && LENGTH <= size - (addr - start) {
                 let data = &val.to_le_bytes();
                 mem_region.write(data, (addr - mem_region.mem_offset) as usize);
                 return;
@@ -186,9 +202,10 @@ impl VirtioGuestMemoryHandle {
         let borrow = self.lock_mem();
         for mem_region in borrow.iter() {
             let start = mem_region.mem_offset;
-            let end = mem_region.mem_offset + mem_region.mem_size as u64;
-            if addr >= start && addr + data.len() as u64 <= end {
-                mem_region.write(data, (addr - mem_region.mem_offset) as usize);
+            let size = mem_region.mem_size as u64;
+            // See `read_guest_memory_alloc` for why this is not `addr + len <= end`.
+            if addr >= start && data.len() as u64 <= size - (addr - start) {
+                mem_region.write(data, (addr - start) as usize);
                 return;
             }
         }

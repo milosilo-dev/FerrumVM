@@ -6,10 +6,27 @@ use crate::devices::virtio::virtio::VIRTQ_DESC_F_WRITE;
 use crate::devices::virtio::virtio::VirtioDevice;
 use crate::devices::virtio::virtio::VirtioGuestMemoryHandle;
 use crate::devices::virtio::virtio::VirtioQueue;
+use crate::devices::virtio::virtio::VirtqDesc;
 use crate::platform::display::DisplayBackend;
 use crate::platform::display::DisplayRect;
 
 const MAX_SCANOUTS: usize = 16;
+
+/// Upper bound on how many command bytes we will read out of a single
+/// descriptor. The largest request struct is 52 bytes; anything larger is a
+/// malformed (or hostile) descriptor and reading it would let a guest ask for
+/// a multi-gigabyte allocation.
+const MAX_REQUEST_BYTES: usize = 4096;
+
+/// Largest 2D resource this device will allocate on the host.
+const MAX_RESOURCE_BYTES: usize = 256 * 1024 * 1024;
+/// Largest width or height of a 2D resource.
+const MAX_RESOURCE_DIMENSION: u32 = 16384;
+/// Most 2D resources that may exist at once.
+const MAX_RESOURCES: usize = 64;
+
+/// Every pixel format this device stores is 32 bits wide.
+const BYTES_PER_PIXEL: usize = 4;
 
 /// Query display capabilities
 const VIRTIO_GPU_CMD_GET_DISPLAY_INFO: u32 = 0x0100;
@@ -29,12 +46,63 @@ const VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0106;
 const VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
 /// Retrieve monitor EDID data
 const VIRTIO_GPU_CMD_GET_EDID: u32 = 0x010A;
+/// Move the cursor, sent on the cursor queue
+const VIRTIO_GPU_CMD_UPDATE_CURSOR: u32 = 0x010B;
+/// Query the current cursor
+const VIRTIO_GPU_CMD_CURSOR_GET: u32 = 0x010C;
 
 /// Empty responce from a given command
 const VIRTIO_GPU_RESP_OK_NODATA: u32 = 0x1100;
 /// Device filled up write descirptor with display info
 const VIRTIO_GPU_RESP_OK_DISPLAY_INFO: u32 = 0x1101;
+/// Device does not support the requested command
+const VIRTIO_GPU_RESP_ERR_UNSUPPORTED: u32 = 0x1201;
+/// A field in the request was out of range
+const VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT: u32 = 0x1202;
 const VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID: u32 = 0x1203;
+
+/// 32bpp pixel formats a guest may ask for. Anything else would be stored with
+/// the wrong stride, so it is rejected rather than silently garbled.
+const SUPPORTED_FORMATS: [u32; 4] = [
+    1, // VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM
+    2, // VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM
+    3, // VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM
+    4, // VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM
+];
+
+/// Writes a response header into a device-writable descriptor and returns how
+/// many bytes were written (0 if the descriptor cannot hold the response).
+///
+/// A free function rather than a method so it can be called while `self`
+/// (and one of its fields) is already mutably borrowed.
+fn write_response(guest_memory: &mut VirtioGuestMemoryHandle, desc: &VirtqDesc, typ: u32) -> usize {
+    let buf = VirtioGpuCtrlHdr::new(typ).to_bytes();
+    if (desc.flags & VIRTQ_DESC_F_WRITE) == 0 || buf.len() > desc.len as usize {
+        return 0;
+    }
+
+    guest_memory.write_guest_memory(desc.addr, buf.as_slice());
+    buf.len()
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuMemEntry {
+    addr: u64,
+    length: u32,
+    padding: u32,
+}
+
+impl VirtioGpuMemEntry {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first().expect("Buffer too small"))
+    }
+}
 
 /// The Header for all GPU commands
 /// use `from_bytes()` to get the current instance from a bytes vector
@@ -62,7 +130,7 @@ impl VirtioGpuCtrlHdr {
 
     /// Converts a stream of bytes into this struct
     /// Makes it easy to phase from the Virtio Queue
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -72,13 +140,13 @@ impl VirtioGpuCtrlHdr {
     }
 
     /// Creates a stream of bytes from the struct info
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(self) -> Vec<u8> {
         let size = mem::size_of::<Self>();
         let mut vec = Vec::with_capacity(size);
 
         unsafe {
             // Cast struct reference to u8 slice
-            let bytes = std::slice::from_raw_parts(self as *const Self as *const u8, size);
+            let bytes = std::slice::from_raw_parts(&self as *const Self as *const u8, size);
             vec.extend_from_slice(bytes);
         }
 
@@ -98,7 +166,7 @@ struct VirtioGpuDisplayInfo {
 
 impl VirtioGpuDisplayInfo {
     /// Create a new display from a display backend
-    pub fn new(backend: &Box<dyn DisplayBackend + Send>) -> Self {
+    pub fn new(backend: &dyn DisplayBackend) -> Self {
         let (width, height) = backend.get_display_size();
 
         let rect = DisplayRect {
@@ -133,13 +201,13 @@ impl VirtioGpuDisplayInfo {
 
     /// Converts a stream of bytes into this struct
     /// Makes it easy to phase fromn the Virtio Queue
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(self) -> Vec<u8> {
         let size = mem::size_of::<Self>();
         let mut vec = Vec::with_capacity(size);
 
         unsafe {
             // Cast struct reference to u8 slice
-            let bytes = std::slice::from_raw_parts(self as *const Self as *const u8, size);
+            let bytes = std::slice::from_raw_parts(&self as *const Self as *const u8, size);
             vec.extend_from_slice(bytes);
         }
 
@@ -154,10 +222,9 @@ struct VirtioGpuDisplayInfoResponse {
 
 impl VirtioGpuDisplayInfoResponse {
     pub fn new(displays: Vec<VirtioGpuDisplayInfo>) -> Self {
+        let count = displays.len().min(16);
         let mut display_list: [VirtioGpuDisplayInfo; 16] = [VirtioGpuDisplayInfo::empty(); 16];
-        for i in 0..displays.len().min(16) {
-            display_list[i] = displays[i];
-        }
+        display_list[..count].copy_from_slice(&displays[..count]);
 
         Self {
             hdr: VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_DISPLAY_INFO),
@@ -165,20 +232,12 @@ impl VirtioGpuDisplayInfoResponse {
         }
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut hdr_bytes = self.hdr.to_bytes();
-        eprintln!("virtio-gpu: get display info: ");
-        for (idx, display) in self.display_list.iter().enumerate() {
-            hdr_bytes.extend(display.to_bytes());
-
-            let width = display.rect.width;
-            let height = display.rect.height;
-            eprintln!(
-                "    display: 0x{:X}, width: {}, height: {}",
-                idx, width, height
-            );
+    pub fn to_bytes(self) -> Vec<u8> {
+        let mut bytes = self.hdr.to_bytes();
+        for display in self.display_list.iter() {
+            bytes.extend(display.to_bytes());
         }
-        hdr_bytes
+        bytes
     }
 }
 
@@ -193,7 +252,7 @@ struct VirtioGpuResourceCreate2D {
 }
 
 impl VirtioGpuResourceCreate2D {
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -207,11 +266,11 @@ impl VirtioGpuResourceCreate2D {
 #[derive(Debug, Copy, Clone)]
 struct VirtioGpuResourceDrop {
     hdr: VirtioGpuCtrlHdr,
-    resorce_id: u32,
+    resource_id: u32,
 }
 
 impl VirtioGpuResourceDrop {
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -231,7 +290,7 @@ struct VirtioGpuSetScanout {
 }
 
 impl VirtioGpuSetScanout {
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -251,7 +310,7 @@ struct VirtioGpuTransferToHost {
 }
 
 impl VirtioGpuTransferToHost {
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
@@ -270,13 +329,75 @@ struct VirtioGpuResourceFlush {
 }
 
 impl VirtioGpuResourceFlush {
-    pub fn from_bytes(data: &Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Self>() {
             return None;
         }
 
         let (_, body, _) = unsafe { data.align_to::<Self>() };
         Some(*body.first().expect("Buffer too small"))
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuBackingAttachHdr {
+    hdr: VirtioGpuCtrlHdr,
+    resource_id: u32,
+    pub nr_entries: u32,
+}
+
+impl VirtioGpuBackingAttachHdr {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first()?)
+    }
+}
+
+struct VirtioGpuBackingAttach {
+    hdr: VirtioGpuBackingAttachHdr,
+    mem_entries: Vec<VirtioGpuMemEntry>,
+}
+impl VirtioGpuBackingAttach {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        let hdr = VirtioGpuBackingAttachHdr::from_bytes(data)?;
+        let rest = &data[std::mem::size_of::<VirtioGpuBackingAttachHdr>()..];
+
+        let mem_entries_cnt =
+            (hdr.nr_entries as usize).min(rest.len() / std::mem::size_of::<VirtioGpuMemEntry>());
+
+        let mut mem_entries: Vec<VirtioGpuMemEntry> = Vec::with_capacity(mem_entries_cnt);
+        for mem_entry_indx in 0..mem_entries_cnt {
+            let start = mem_entry_indx * std::mem::size_of::<VirtioGpuMemEntry>();
+            let end = start + std::mem::size_of::<VirtioGpuMemEntry>();
+            mem_entries.push(VirtioGpuMemEntry::from_bytes(&rest[start..end])?);
+        }
+
+        Some(Self { hdr, mem_entries })
+    }
+}
+
+/// `RESOURCE_DETACH_BACKING` carries the header and a bare resource id, with
+/// no entry count.
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+struct VirtioGpuResourceDetachBacking {
+    hdr: VirtioGpuCtrlHdr,
+    resource_id: u32,
+}
+
+impl VirtioGpuResourceDetachBacking {
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return None;
+        }
+
+        let (_, body, _) = unsafe { data.align_to::<Self>() };
+        Some(*body.first()?)
     }
 }
 
@@ -318,9 +439,15 @@ impl VirtioGpuConfig {
     }
 
     pub fn write_field(&mut self, offset: usize, data: &[u8]) {
+        if data.is_empty() || data.len() > 4 {
+            // A single MMIO write can straddle the two 32-bit fields, or be
+            // wide enough to overflow the mask shift below.
+            return;
+        }
+
         let field = offset / 4;
         let start = offset % 4;
-        if start + data.len() > 4 && (offset / 4) == ((offset + data.len() - 1) / 4) {
+        if start + data.len() > 4 {
             return;
         }
 
@@ -334,17 +461,15 @@ impl VirtioGpuConfig {
         };
         self.events_clear = (cur & !mask) | (u32::from_le_bytes(buf) & mask);
     }
-}
 
-#[repr(C, packed)]
-struct VirtioGpuMemEntry {
-    addr: u64,
-    length: u32,
-    padding: u32,
+    /// Clears the driver-writable event bits after a device reset.
+    pub fn reset(&mut self) {
+        self.events_read = 0;
+        self.events_clear = 0;
+    }
 }
 
 struct GpuResource {
-    format: u32,
     width: u32,
     height: u32,
     backing: Vec<VirtioGpuMemEntry>,
@@ -353,23 +478,65 @@ struct GpuResource {
 }
 
 impl GpuResource {
-    /// Create a new GPU Resource, no Backings yet
-    pub fn new(format: u32, width: u32, height: u32) -> Self {
-        let bpp = 4;
-        let stride = width as usize * bpp;
-        Self {
-            format,
+    /// Create a new GPU Resource with no backing pages attached yet.
+    ///
+    /// Returns `None` if the requested geometry is unsupported or would need
+    /// more host memory than [`MAX_RESOURCE_BYTES`]. Dimensions come straight
+    /// from the guest, so this check is what stops a `RESOURCE_CREATE_2D` from
+    /// aborting the whole VMM via a failed allocation.
+    pub fn new(format: u32, width: u32, height: u32) -> Option<Self> {
+        if !SUPPORTED_FORMATS.contains(&format) {
+            return None;
+        }
+
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        if width > MAX_RESOURCE_DIMENSION || height > MAX_RESOURCE_DIMENSION {
+            return None;
+        }
+
+        let stride = (width as usize).checked_mul(BYTES_PER_PIXEL)?;
+        let len = stride.checked_mul(height as usize)?;
+        if len > MAX_RESOURCE_BYTES {
+            return None;
+        }
+
+        Some(Self {
             width,
             height,
             backing: vec![],
-            data: vec![0u8; stride * height as usize],
+            data: vec![0u8; len],
             stride,
-        }
+        })
+    }
+
+    /// True if `rect` lies entirely inside this resource.
+    fn contains(&self, rect: &DisplayRect) -> bool {
+        rect.width != 0
+            && rect.height != 0
+            && rect.x < self.width
+            && rect.y < self.height
+            && rect.x.saturating_add(rect.width) <= self.width
+            && rect.y.saturating_add(rect.height) <= self.height
+    }
+
+    /// Total size of the attached backing pages.
+    fn backing_len(&self) -> usize {
+        self.backing
+            .iter()
+            .fold(0usize, |acc, e| acc.saturating_add(e.length as usize))
     }
 }
 
+/// Copies `out.len()` bytes of a resource's backing pages, starting `start`
+/// bytes into the logical page list, into `out`.
+///
+/// The scratch buffer for the guest read is allocated once by the caller, so a
+/// full-frame transfer is one allocation per row rather than two.
 fn read_backing_range(
-    guest_memory: &mut VirtioGuestMemoryHandle,
+    guest_memory: &VirtioGuestMemoryHandle,
     resource: &GpuResource,
     start: usize,
     out: &mut [u8],
@@ -384,13 +551,24 @@ fn read_backing_range(
         let entry_start = start.saturating_sub(skipped);
         if entry_start < entry_len {
             let n = (entry_len - entry_start).min(out.len() - copied);
-            let mut tmp = vec![0u8; n];
-            guest_memory.read_guest_memory(entry.addr + entry_start as u64, &mut tmp);
+            let Some(addr) = entry.addr.checked_add(entry_start as u64) else {
+                break;
+            };
+            let tmp = guest_memory.read_guest_memory_alloc(addr, n);
             out[copied..copied + n].copy_from_slice(&tmp);
             copied += n;
         }
-        skipped += entry_len;
+        skipped = skipped.saturating_add(entry_len);
     }
+}
+
+/// A command's pending reply, written to the response descriptor once the
+/// command has been handled.
+enum GpuResponse {
+    /// A bare `virtio_gpu_ctrl_hdr` carrying the given type code.
+    Header(u32),
+    /// A pre-rendered response body.
+    Raw(Vec<u8>),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -449,20 +627,31 @@ impl VirtioDevice for VirtioGpu {
             return false;
         };
 
-        let mut _did_work: bool = false;
+        let mut did_work = false;
         match queue_sel {
             0 => {
                 // Control Queue
                 while let Some(head) = queue.pop_avail(guest_memory) {
+                    did_work = true;
+
                     let header_desc = queue.get_descriptor(guest_memory, head);
-                    if header_desc.flags & VIRTQ_DESC_F_NEXT == 0
-                        || header_desc.flags & VIRTQ_DESC_F_WRITE != 0
+
+                    // The head has to be device-readable, has to chain to a
+                    // valid response descriptor, and its length is guest
+                    // controlled. Retire anything malformed rather than
+                    // `continue`ing, or the avail and used rings drift apart
+                    // and the driver hangs.
+                    if (header_desc.flags & VIRTQ_DESC_F_NEXT) == 0
+                        || (header_desc.flags & VIRTQ_DESC_F_WRITE) != 0
+                        || header_desc.next as usize >= queue.size as usize
+                        || header_desc.len as usize > MAX_REQUEST_BYTES
                     {
+                        queue.push_used(guest_memory, head, 0);
                         continue;
                     }
 
-                    let mut header_bytes = vec![0; header_desc.len as usize];
-                    guest_memory.read_guest_memory(header_desc.addr, &mut header_bytes);
+                    let header_bytes = guest_memory
+                        .read_guest_memory_alloc(header_desc.addr, header_desc.len as usize);
 
                     let Some(header) = VirtioGpuCtrlHdr::from_bytes(&header_bytes) else {
                         queue.push_used(guest_memory, head, 0);
@@ -470,223 +659,312 @@ impl VirtioDevice for VirtioGpu {
                     };
 
                     let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next); // Response descriptor
-                    let written: usize = match header.typ {
-                        VIRTIO_GPU_CMD_GET_DISPLAY_INFO => 'get_display_info: {
-                            let displays = vec![VirtioGpuDisplayInfo::new(&self.window)];
-                            let buf = VirtioGpuDisplayInfoResponse::new(displays).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                || buf.len() > gpu_cmd_desc.len as usize
-                            {
-                                break 'get_display_info 0;
+
+                    let response: GpuResponse = 'cmd: {
+                        match header.typ {
+                            VIRTIO_GPU_CMD_GET_DISPLAY_INFO => {
+                                let displays =
+                                    vec![VirtioGpuDisplayInfo::new(self.window.as_ref())];
+                                GpuResponse::Raw(
+                                    VirtioGpuDisplayInfoResponse::new(displays).to_bytes(),
+                                )
                             }
-
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
-                        }
-                        VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => 'create_resource_2d: {
-                            let Some(resource_info) =
-                                VirtioGpuResourceCreate2D::from_bytes(&header_bytes)
-                            else {
-                                break 'create_resource_2d 0;
-                            };
-
-                            self.resources.insert(
-                                resource_info.resource_id,
-                                GpuResource::new(
-                                    resource_info.format,
-                                    resource_info.width,
-                                    resource_info.height,
-                                ),
-                            );
-
-                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                || buf.len() > gpu_cmd_desc.len as usize
-                            {
-                                break 'create_resource_2d 0;
-                            }
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
-                        }
-                        VIRTIO_GPU_CMD_RESOURCE_UNREF => 'unref_resource: {
-                            let Some(resource_info) =
-                                VirtioGpuResourceDrop::from_bytes(&header_bytes)
-                            else {
-                                break 'unref_resource 0;
-                            };
-
-                            let id = resource_info.resorce_id;
-                            self.resources.remove(&id);
-
-                            // TODO: Use a hashmap instead of searching each unref call
-                            for idx in 0..self.scanouts.len() {
-                                if self.scanouts[idx].resource_id == Some(id) {
-                                    self.scanouts[idx] = VirtioGpuScanout {
-                                        resource_id: None,
-                                        rect: DisplayRect::empty(),
-                                    };
-                                }
-                            }
-
-                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                || buf.len() > gpu_cmd_desc.len as usize
-                            {
-                                break 'unref_resource 0;
-                            }
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
-                        }
-                        VIRTIO_GPU_CMD_SET_SCANOUT => 'set_scanout: {
-                            let Some(resource_info) =
-                                VirtioGpuSetScanout::from_bytes(&header_bytes)
-                            else {
-                                break 'set_scanout 0;
-                            };
-
-                            if (resource_info.scanout_id as usize) >= MAX_SCANOUTS {
-                                break 'set_scanout 0;
-                            }
-
-                            if resource_info.resource_id == 0 {
-                                self.scanouts[resource_info.scanout_id as usize] =
-                                    VirtioGpuScanout {
-                                        resource_id: None,
-                                        rect: DisplayRect::empty(),
-                                    };
-                            } else {
-                                self.scanouts[resource_info.scanout_id as usize] =
-                                    VirtioGpuScanout {
-                                        resource_id: Some(resource_info.resource_id),
-                                        rect: resource_info.rect,
-                                    };
-                            }
-
-                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                || buf.len() > gpu_cmd_desc.len as usize
-                            {
-                                break 'set_scanout 0;
-                            }
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
-                        }
-                        VIRTIO_GPU_CMD_RESOURCE_FLUSH => 'resource_flush: {
-                            let Some(resource_info) =
-                                VirtioGpuResourceFlush::from_bytes(&header_bytes)
-                            else {
-                                break 'resource_flush 0;
-                            };
-
-                            let resource_id = resource_info.resource_id;
-                            let Some(resource) = self.resources.get_mut(&resource_id) else {
-                                let buf =
-                                    VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID)
-                                        .to_bytes();
-                                if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                    || buf.len() > gpu_cmd_desc.len as usize
-                                {
-                                    break 'resource_flush 0;
-                                }
-                                guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                                break 'resource_flush buf.len();
-                            };
-
-                            for scanout in self.scanouts {
-                                let Some(scanout_resource_id) = scanout.resource_id else {
-                                    break;
+                            VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => {
+                                let Some(req) =
+                                    VirtioGpuResourceCreate2D::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
                                 };
 
-                                if scanout_resource_id == resource_id {
-                                    // Draw this resource to SDL
-                                    self.window
-                                        .blit(&resource.data, resource.stride, scanout.rect);
+                                // Re-using a live id would orphan the previous
+                                // resource's backing pages.
+                                let resource_id = req.resource_id;
+                                if self.resources.contains_key(&resource_id) {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
                                 }
-                            }
 
-                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                || buf.len() > gpu_cmd_desc.len as usize
-                            {
-                                break 'resource_flush 0;
-                            }
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
-                        }
-                        VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D => 'transfer_to_host: {
-                            let Some(req) = VirtioGpuTransferToHost::from_bytes(&header_bytes)
-                            else {
-                                break 'transfer_to_host 0;
-                            };
+                                if self.resources.len() >= MAX_RESOURCES {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                }
 
-                            let resource_id = req.resource_id;
-                            let Some(resource) = self.resources.get_mut(&resource_id) else {
-                                let buf =
-                                    VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID)
-                                        .to_bytes();
-                                if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
-                                    || buf.len() > gpu_cmd_desc.len as usize
+                                let Some(resource) =
+                                    GpuResource::new(req.format, req.width, req.height)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                self.resources.insert(resource_id, resource);
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_RESOURCE_UNREF => {
+                                let Some(req) = VirtioGpuResourceDrop::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                let id = req.resource_id;
+                                self.resources.remove(&id);
+
+                                for scanout in self.scanouts.iter_mut() {
+                                    if scanout.resource_id == Some(id) {
+                                        *scanout = VirtioGpuScanout::empty();
+                                    }
+                                }
+
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_SET_SCANOUT => {
+                                let Some(req) = VirtioGpuSetScanout::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                if (req.scanout_id as usize) >= MAX_SCANOUTS {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                }
+
+                                let resource_id = req.resource_id;
+                                if resource_id != 0 && !self.resources.contains_key(&resource_id) {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
+                                }
+
+                                let scanout = &mut self.scanouts[req.scanout_id as usize];
+                                if req.resource_id == 0 {
+                                    *scanout = VirtioGpuScanout::empty();
+                                } else {
+                                    *scanout = VirtioGpuScanout {
+                                        resource_id: Some(req.resource_id),
+                                        rect: req.rect,
+                                    };
+                                }
+
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_RESOURCE_FLUSH => {
+                                let Some(req) = VirtioGpuResourceFlush::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                let resource_id = req.resource_id;
+                                let Some(resource) = self.resources.get(&resource_id) else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
+                                };
+
+                                // Note: this blits the whole scanout rather than
+                                // just `req.rect`, the dirty region.
+                                for scanout in self.scanouts.iter() {
+                                    if scanout.resource_id == Some(req.resource_id) {
+                                        self.window.blit(
+                                            &resource.data,
+                                            resource.stride,
+                                            scanout.rect,
+                                        );
+                                    }
+                                }
+
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D => {
+                                let Some(req) = VirtioGpuTransferToHost::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                let resource_id = req.resource_id;
+                                let Some(resource) = self.resources.get_mut(&resource_id) else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
+                                };
+
+                                let rect = req.rect;
+                                if !resource.contains(&rect) {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                }
+
+                                let stride = resource.stride;
+                                let row_len = rect.width as usize * BYTES_PER_PIXEL;
+
+                                // `req.offset` is an unchecked guest u64, so every
+                                // step of this address arithmetic is checked.
+                                let base = match (req.offset as usize)
+                                    .checked_add((rect.y as usize).saturating_mul(stride))
+                                    .and_then(|v| v.checked_add(rect.x as usize * BYTES_PER_PIXEL))
                                 {
-                                    break 'transfer_to_host 0;
+                                    Some(base) => base,
+                                    None => {
+                                        break 'cmd GpuResponse::Header(
+                                            VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                        );
+                                    }
+                                };
+
+                                if base > resource.backing_len() {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
                                 }
-                                guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                                break 'transfer_to_host buf.len();
-                            };
 
-                            let bpp = 4usize;
-                            let stride = resource.stride;
-                            let rect = req.rect;
-                            let row_len = rect.width as usize * bpp;
+                                let mut row_buf = vec![0u8; row_len];
+                                for row in 0..rect.height as usize {
+                                    let Some(src) = base.checked_add(row.saturating_mul(stride))
+                                    else {
+                                        break;
+                                    };
+                                    read_backing_range(guest_memory, resource, src, &mut row_buf);
 
-                            let base = req.offset as usize
-                                + (rect.y as usize * stride + rect.x as usize * bpp);
-
-                            let mut row_buf = vec![0u8; row_len];
-                            for row in 0..rect.height as usize {
-                                read_backing_range(
-                                    guest_memory,
-                                    resource,
-                                    base + row * stride,
-                                    &mut row_buf,
-                                );
-
-                                let dst_start =
-                                    ((rect.y as usize + row) * stride) + (rect.x as usize * bpp);
-                                let copy_len = row_buf
-                                    .len()
-                                    .min(resource.data.len().saturating_sub(dst_start));
-                                if copy_len == 0 {
-                                    break;
+                                    let dst_start = (rect.y as usize + row) * stride
+                                        + rect.x as usize * BYTES_PER_PIXEL;
+                                    let copy_len = row_buf
+                                        .len()
+                                        .min(resource.data.len().saturating_sub(dst_start));
+                                    if copy_len == 0 {
+                                        break;
+                                    }
+                                    resource.data[dst_start..dst_start + copy_len]
+                                        .copy_from_slice(&row_buf[..copy_len]);
                                 }
-                                resource.data[dst_start..dst_start + copy_len]
-                                    .copy_from_slice(&row_buf[..copy_len]);
+
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
                             }
+                            VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING => {
+                                let Some(req) = VirtioGpuBackingAttach::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
 
-                            let buf = VirtioGpuCtrlHdr::new(VIRTIO_GPU_RESP_OK_NODATA).to_bytes();
-                            if gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE == 0
+                                let resource_id = req.hdr.resource_id;
+                                let Some(resource) = self.resources.get_mut(&resource_id) else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
+                                };
+
+                                resource.backing = req.mem_entries;
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING => {
+                                // Not the attach header: this command is 28
+                                // bytes, since it has no nr_entries field.
+                                let Some(req) =
+                                    VirtioGpuResourceDetachBacking::from_bytes(&header_bytes)
+                                else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT,
+                                    );
+                                };
+
+                                let resource_id = req.resource_id;
+                                let Some(resource) = self.resources.get_mut(&resource_id) else {
+                                    break 'cmd GpuResponse::Header(
+                                        VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID,
+                                    );
+                                };
+
+                                resource.backing = vec![];
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            // No EDID is exposed, but a driver blocks on the
+                            // response. Sending one turns a 5s probe timeout
+                            // into an instant "no EDID available".
+                            VIRTIO_GPU_CMD_GET_EDID => {
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            VIRTIO_GPU_CMD_CURSOR_GET => {
+                                GpuResponse::Header(VIRTIO_GPU_RESP_OK_NODATA)
+                            }
+                            // Always answer, even for commands we do not
+                            // implement: silence makes the driver wait out its
+                            // full response timeout.
+                            _ => GpuResponse::Header(VIRTIO_GPU_RESP_ERR_UNSUPPORTED),
+                        }
+                    };
+
+                    let written: usize = match response {
+                        GpuResponse::Raw(buf) => {
+                            if (gpu_cmd_desc.flags & VIRTQ_DESC_F_WRITE) == 0
                                 || buf.len() > gpu_cmd_desc.len as usize
                             {
-                                break 'transfer_to_host 0;
+                                0
+                            } else {
+                                guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
+                                buf.len()
                             }
-                            guest_memory.write_guest_memory(gpu_cmd_desc.addr, buf.as_slice());
-                            buf.len()
                         }
-                        VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING => 0,
-                        VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING => 0,
-                        VIRTIO_GPU_CMD_GET_EDID => 0,
-                        _ => 0,
+                        GpuResponse::Header(typ) => {
+                            write_response(guest_memory, &gpu_cmd_desc, typ)
+                        }
                     };
 
                     queue.push_used(guest_memory, head, written as u32);
                 }
             }
             1 => {
-                // Cursor Queue
-                while let Some(_head) = queue.pop_avail(guest_memory) {}
+                // Cursor Queue. Still retire the descriptors and reply, or the
+                // driver's cursor updates wedge the queue.
+                while let Some(head) = queue.pop_avail(guest_memory) {
+                    did_work = true;
+
+                    let header_desc = queue.get_descriptor(guest_memory, head);
+                    if (header_desc.flags & VIRTQ_DESC_F_NEXT) == 0
+                        || (header_desc.flags & VIRTQ_DESC_F_WRITE) != 0
+                        || header_desc.next as usize >= queue.size as usize
+                    {
+                        queue.push_used(guest_memory, head, 0);
+                        continue;
+                    }
+
+                    let resp_desc = queue.get_descriptor(guest_memory, header_desc.next);
+                    let header_len = (header_desc.len as usize).min(MAX_REQUEST_BYTES);
+                    let header_bytes =
+                        guest_memory.read_guest_memory_alloc(header_desc.addr, header_len);
+                    let typ =
+                        VirtioGpuCtrlHdr::from_bytes(&header_bytes).map_or(0, |header| header.typ);
+
+                    // The reply is a response header, never an echo of the
+                    // command code.
+                    let response = match typ {
+                        VIRTIO_GPU_CMD_UPDATE_CURSOR | VIRTIO_GPU_CMD_CURSOR_GET => {
+                            VIRTIO_GPU_RESP_OK_NODATA
+                        }
+                        _ => VIRTIO_GPU_RESP_ERR_UNSUPPORTED,
+                    };
+
+                    let written = write_response(guest_memory, &resp_desc, response);
+                    queue.push_used(guest_memory, head, written as u32);
+                }
             }
             _ => {}
         }
-        _did_work
+
+        did_work
     }
 
     fn read_config(&self, length: usize) -> Vec<u8> {
@@ -699,5 +977,13 @@ impl VirtioDevice for VirtioGpu {
 
     fn update(&mut self, _queues: &mut [VirtioQueue]) -> bool {
         false
+    }
+
+    /// A guest reset must not leave the old resource table and scanout
+    /// bindings pointing at guest pages that are no longer ours.
+    fn reset(&mut self) {
+        self.resources.clear();
+        self.scanouts = [VirtioGpuScanout::empty(); MAX_SCANOUTS];
+        self.config.reset();
     }
 }

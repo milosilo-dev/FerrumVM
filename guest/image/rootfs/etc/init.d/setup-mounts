@@ -1,0 +1,60 @@
+#!/bin/sh
+# Mount the pseudo-filesystems the rest of the system expects to exist.
+#
+# The initramfs only bakes in static nodes for console, null and ttyS0, and
+# nothing else in the boot sequence mounts anything, so without this /proc,
+# /sys and /dev are all empty directories. Every diagnostic and every program
+# that pokes at the hardware needs them.
+#
+# Each mount is attempted independently: a missing pseudo-filesystem should
+# degrade the system, not stop it from booting.
+
+mount_one() {
+    _type=$1
+    _src=$2
+    _dir=$3
+    _opts=$4
+
+    if mountpoint -q "$_dir" 2>/dev/null; then
+        return 0
+    fi
+
+    # The mountpoint is created here rather than up front, because mounting
+    # devtmpfs over /dev shadows anything we made underneath it beforehand.
+    mkdir -p "$_dir" 2>/dev/null
+
+    if mount -t "$_type" -o "$_opts" "$_src" "$_dir" 2>/dev/null; then
+        echo "mounted $_type on $_dir"
+    else
+        echo "warning: could not mount $_type on $_dir" >&2
+    fi
+}
+
+# /proc first: several later steps read from it.
+mount_one proc proc /proc defaults
+
+# /sys next: /sys/class/drm is how you find out whether a GPU bound.
+mount_one sysfs sysfs /sys defaults
+
+# devtmpfs repopulates /dev from whatever the kernel has registered, so
+# /dev/dri and /dev/ttyS0 appear on their own. It shadows the static nodes
+# baked into the initramfs, but it provides console, null and ttyS0 too, so
+# the getty on ttyS0 is unaffected.
+mount_one devtmpfs devtmpfs /dev mode=0755
+
+# devpts is mounted after devtmpfs and creates its own mountpoint, since
+# devtmpfs may not provide one. gid 5 is the tty group.
+mount_one devpts devpts /dev/pts gid=5,mode=620
+
+# /run is tmpfs on Alpine and is where runtime state belongs.
+mount_one tmpfs tmpfs /run mode=0755,nosuid,nodev
+
+# The hostname has to be set after mounting, so put it in the script rather
+# than in the initramfs. This is also what stops the prompt showing (none).
+# Treated as best-effort: a kernel with CONFIG_UNIX98_PTYS or a restrictive
+# namespace may refuse sethostname, and that should not fail the boot.
+if [ -f /etc/hostname ]; then
+    hostname -F /etc/hostname 2>/dev/null || true
+fi
+
+exit 0

@@ -49,10 +49,6 @@ impl FerrumSDLContext {
         })
     }
 
-    pub fn update(&mut self) {
-        self.canvas.present();
-    }
-
     fn blit_rect(
         &mut self,
         src: &[u8],
@@ -79,10 +75,21 @@ impl FerrumSDLContext {
             rows[dst_start..dst_start + len].copy_from_slice(&src[src_start..src_start + len]);
         }
 
+        let w = w.min(self.width.saturating_sub(dst_x));
+        let h = h.min(self.height.saturating_sub(dst_y));
+        if w == 0 || h == 0 {
+            return;
+        }
+
         let rect = Rect::new(dst_x as i32, dst_y as i32, w, h);
-        self.texture
-            .update(Some(rect), &rows, row_len)
-            .expect("Failed to update texture");
+        if let Err(e) = self.texture.update(Some(rect), &rows, row_len) {
+            eprintln!("virtio-gpu: texture update failed: {}", e);
+            return;
+        }
+
+        if let Err(e) = self.canvas.copy(&self.texture, None, None) {
+            eprintln!("virtio-gpu: render copy failed: {}", e);
+        }
     }
 }
 
@@ -96,7 +103,7 @@ impl DisplayBackend for FerrumSDLContext {
             self.width = width;
             self.height = height;
             match self.texture_creator.create_texture_streaming(
-                PixelFormatEnum::ABGR8888,
+                PixelFormatEnum::RGBA8888,
                 width,
                 height,
             ) {
@@ -130,10 +137,10 @@ impl DisplayBackend for FerrumSDLContext {
             src_rect.x,
             src_rect.y, // Adjust this if scanout has offset!
         );
+        self.present();
     }
 
     fn present(&mut self) {
         self.canvas.present();
-        self.canvas.clear();
     }
 }

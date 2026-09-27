@@ -1,0 +1,42 @@
+#!/bin/sh
+# System init, run once by the sysinit action in /etc/inittab.
+#
+# Every executable in this directory named setup-* is run in alphabetical
+# order, then the network is brought up. This is deliberately hand-rolled
+# rather than delegating to OpenRC: this system boots without ever having run
+# `openrc boot`, so pulling OpenRC in here would mean configuring it too.
+#
+# Each script runs in its own process, deliberately: a script that calls
+# `exit` would otherwise take rcS down with it and skip every script after it.
+# Keep them self-contained rather than relying on exported state.
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+
+setup_failed=0
+
+for script in /etc/init.d/setup-*; do
+    [ -f "$script" ] || continue
+    case "$script" in
+        *.bak | *~) continue ;;
+    esac
+    [ -x "$script" ] || chmod +x "$script" 2>/dev/null
+
+    echo "init: running $script"
+    if "$script"; then
+        :
+    else
+        echo "init: $script failed" >&2
+        setup_failed=1
+    fi
+done
+
+if [ -x /etc/network/setup.sh ]; then
+    echo "init: bringing up the network"
+    if ! /bin/sh /etc/network/setup.sh; then
+        echo "init: network setup failed" >&2
+        setup_failed=1
+    fi
+fi
+
+exit $setup_failed
