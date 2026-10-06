@@ -22,7 +22,11 @@ impl SharedFolder {
         Ok(out)
     }
 
-    pub(crate) fn release_dir(&mut self, _header: &FuseInHeader, _body: &[u8]) -> Result<Vec<u8>, i32> {
+    pub(crate) fn release_dir(
+        &mut self,
+        _header: &FuseInHeader,
+        _body: &[u8],
+    ) -> Result<Vec<u8>, i32> {
         Ok(vec![])
     }
 

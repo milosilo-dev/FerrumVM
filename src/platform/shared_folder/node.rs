@@ -66,7 +66,11 @@ impl SharedFolder {
         Ok(build_entry_out(nodeid, &meta))
     }
 
-    pub(crate) fn make_directory(&mut self, header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
+    pub(crate) fn make_directory(
+        &mut self,
+        header: &FuseInHeader,
+        body: &[u8],
+    ) -> Result<Vec<u8>, i32> {
         let mode = u32::from_le_bytes(body[0..4].try_into().map_err(|_| libc::EIO)?);
 
         let name_start = 8; // after FuseMkdirIn (mode + umask)
@@ -102,7 +106,11 @@ impl SharedFolder {
         Ok(build_entry_out(nodeid, &meta))
     }
 
-    pub(crate) fn make_symlink(&mut self, header: &FuseInHeader, body: &[u8]) -> Result<Vec<u8>, i32> {
+    pub(crate) fn make_symlink(
+        &mut self,
+        header: &FuseInHeader,
+        body: &[u8],
+    ) -> Result<Vec<u8>, i32> {
         let name_end = body.iter().position(|&b| b == 0).unwrap_or(body.len());
         let link_end = body[name_end + 1..]
             .iter()

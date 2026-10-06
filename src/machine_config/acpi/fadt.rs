@@ -50,14 +50,14 @@ pub fn build_fadt(dsdt_addr: u64) -> Binary {
     fadt[112..116].copy_from_slice(&0x03u32.to_le_bytes());
 
     // Reset Register
-    fadt[116] = 1;     // System I/O
-    fadt[117] = 8;     // Bit width
-    fadt[118] = 0;     // Bit offset
-    fadt[119] = 1;     // Byte access
+    fadt[116] = 1; // System I/O
+    fadt[117] = 8; // Bit width
+    fadt[118] = 0; // Bit offset
+    fadt[119] = 1; // Byte access
 
     fadt[120..128].copy_from_slice(&0x0CF9u64.to_le_bytes());
 
-    fadt[128] = 0x0A;  // Reset value
+    fadt[128] = 0x0A; // Reset value
 
     // X_FACS (64-bit) - 0, no FACS used
     fadt[132..140].copy_from_slice(&0u64.to_le_bytes());

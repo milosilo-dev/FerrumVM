@@ -18,10 +18,10 @@ pub fn build_madt(vcpu_num: u8) -> Binary {
     madt[36..40].copy_from_slice(&(0xFEE00000u32).to_le_bytes());
     // Flags
     madt[40..44].copy_from_slice(&(1u32).to_le_bytes());
-    
+
     // VCPU's
     let mut offset = 44;
-    for vcpu_id in 0..vcpu_num{
+    for vcpu_id in 0..vcpu_num {
         madt[offset] = 0; // Type
         madt[offset + 1] = 8; // Length
         madt[offset + 2] = vcpu_id; // ACPI Processor UID
@@ -38,11 +38,7 @@ pub fn build_madt(vcpu_num: u8) -> Binary {
     madt[offset + 4..offset + 8].copy_from_slice(&0xFEC00000u32.to_le_bytes()); // IOAPIC address
     madt[offset + 8..offset + 12].copy_from_slice(&0u32.to_le_bytes()); // GSI base
 
-    let checksum = madt
-        .iter()
-        .fold(0u8, |sum, byte| {
-            sum.wrapping_add(*byte)
-        });
+    let checksum = madt.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte));
 
     madt[9] = checksum.wrapping_neg();
 

@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use kvm_bindings::{kvm_cpuid2, kvm_mp_state, kvm_regs, kvm_segment, KVM_MP_STATE_UNINITIALIZED};
+use kvm_bindings::{KVM_MP_STATE_UNINITIALIZED, kvm_cpuid2, kvm_mp_state, kvm_regs, kvm_segment};
 use kvm_ioctls::{VcpuFd, VmFd};
 use vmm_sys_util::fam::FamStructWrapper;
 
@@ -95,7 +95,8 @@ impl VCPU {
         } else {
             vcpu.set_mp_state(kvm_mp_state {
                 mp_state: KVM_MP_STATE_UNINITIALIZED,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         Self { fd: vcpu }

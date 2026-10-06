@@ -19,28 +19,33 @@ pub struct FerrumSDLContext {
 unsafe impl Send for FerrumSDLContext {}
 
 impl FerrumSDLContext {
-    pub fn new(width: u32, height: u32) -> Option<Self> {
-        let sdl_context = sdl2::init().ok()?;
-        let video_subsystem = sdl_context.video().ok()?;
+    pub fn new(width: u32, height: u32) -> Result<Self, String> {
+        let sdl_context = sdl2::init()?;
+        let video_subsystem = sdl_context.video()?;
 
-        let window = video_subsystem
+        let window = match video_subsystem
             .window("Ferrum VM", width, height)
             .position_centered()
             .build()
-            .ok()?;
+        {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Could not create window: {:?}", e);
+                return Err(format!("Could not create window: {:?}", e));
+            }
+        };
 
-        let mut canvas = window.into_canvas().build().ok()?;
+        let mut canvas = window.into_canvas().build()?;
         canvas.set_draw_color(Color::RGB(255, 255, 255));
         canvas.clear();
 
         let texture_creator: &'static TextureCreator<WindowContext> =
             Box::leak(Box::new(canvas.texture_creator()));
 
-        let texture = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGBA8888, width, height)
-            .ok()?;
+        let texture =
+            texture_creator.create_texture_streaming(PixelFormatEnum::RGBA8888, width, height)?;
 
-        Some(Self {
+        Ok(Self {
             canvas,
             texture_creator,
             texture,

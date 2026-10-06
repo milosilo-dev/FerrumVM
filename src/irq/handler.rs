@@ -39,4 +39,3 @@ impl IRQHandler {
         std::mem::take(&mut self.commands)
     }
 }
-

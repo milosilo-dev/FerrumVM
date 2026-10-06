@@ -1,4 +1,7 @@
-use ferrumvm::irq::{handler::{IRQCommand, IRQHandler}, map::IrqMap};
+use ferrumvm::irq::{
+    handler::{IRQCommand, IRQHandler},
+    map::IrqMap,
+};
 
 #[test]
 fn new_handler_has_no_pending_irqs() {

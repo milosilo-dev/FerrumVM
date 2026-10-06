@@ -1,6 +1,12 @@
 use crate::{
-    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion}, irq::map::IrqMap, machine_config::{
-        acpi::{dsdt::load_dsdt, fadt::build_fadt, madt::build_madt, rsdp::build_rsdp, xsdt::build_xsdt}, binary::Binary, mem_map::{MemMap, MemMapHeader, MemType},
+    device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
+    irq::map::IrqMap,
+    machine_config::{
+        acpi::{
+            dsdt::load_dsdt, fadt::build_fadt, madt::build_madt, rsdp::build_rsdp, xsdt::build_xsdt,
+        },
+        binary::Binary,
+        mem_map::{MemMap, MemMapHeader, MemType},
     },
 };
 
@@ -22,8 +28,7 @@ pub struct MachineConfig {
 
 impl MachineConfig {
     pub fn inject_memmap(&mut self) {
-        let ram_end =
-            self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset;
+        let ram_end = self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset;
 
         // The in-kernel KVM irqchip owns these ranges (no user RAM slot backs them), so
         // they must be excluded from usable RAM. Reserve the whole span from the IOAPIC

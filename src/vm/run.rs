@@ -1,6 +1,6 @@
+use crossterm::terminal::disable_raw_mode;
 use kvm_ioctls::VcpuExit;
 use std::sync::Arc;
-use crossterm::terminal::disable_raw_mode;
 
 use crate::vm::vm::VirtualMachine;
 
@@ -105,10 +105,7 @@ impl VirtualMachine {
                 }
 
                 VcpuExit::FailEntry(reason, ..) => {
-                    eprintln!(
-                        "KVM_EXIT_FAIL_ENTRY: reason = {:#x}",
-                        reason
-                    );
+                    eprintln!("KVM_EXIT_FAIL_ENTRY: reason = {:#x}", reason);
 
                     return Err(CrashReason::FailedEntry);
                 }

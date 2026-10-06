@@ -11,7 +11,11 @@ use crate::{
     device_maps::{
         io::{IODeviceMap, IODeviceRegion},
         mmio::{MMIODeviceMap, MMIODeviceRegion},
-    }, irq::handler::IRQHandler, machine_config::{machine_config::MachineConfig, memory_region::MemoryRegion}, vcpu::VCPU, vm::{tick::TickContext, vm::VirtualMachine},
+    },
+    irq::handler::IRQHandler,
+    machine_config::{machine_config::MachineConfig, memory_region::MemoryRegion},
+    vcpu::VCPU,
+    vm::{tick::TickContext, vm::VirtualMachine},
 };
 
 impl VirtualMachine {
@@ -47,8 +51,13 @@ impl VirtualMachine {
         let guest_memory = Arc::new(Mutex::new(vec![]));
 
         let mut vcpus: Vec<Arc<Mutex<VCPU>>> = vec![];
-        for vcpu_id in 0..machine_config.total_vcpus{
-            vcpus.push(Arc::new(Mutex::new(Self::new_vcpu(&kvm, &vm, &machine_config, vcpu_id))));
+        for vcpu_id in 0..machine_config.total_vcpus {
+            vcpus.push(Arc::new(Mutex::new(Self::new_vcpu(
+                &kvm,
+                &vm,
+                &machine_config,
+                vcpu_id,
+            ))));
         }
 
         let mut this = Self {
@@ -116,7 +125,12 @@ impl VirtualMachine {
         this
     }
 
-    fn new_vcpu(kvm: &Kvm, vm: &Arc<Mutex<VmFd>>, machine_config: &MachineConfig, vcpu_id: u8) -> VCPU {
+    fn new_vcpu(
+        kvm: &Kvm,
+        vm: &Arc<Mutex<VmFd>>,
+        machine_config: &MachineConfig,
+        vcpu_id: u8,
+    ) -> VCPU {
         let mut cpuid = kvm
             .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
             .unwrap();
@@ -134,15 +148,19 @@ impl VirtualMachine {
                 }
 
                 1 => {
-                    entry.ebx =
-                        (entry.ebx & 0x00FF_FFFF) | ((vcpu_id as u32) << 24); // APIC ID
+                    entry.ebx = (entry.ebx & 0x00FF_FFFF) | ((vcpu_id as u32) << 24); // APIC ID
                 }
 
                 _ => {}
             }
         }
 
-        let vcpu = VCPU::new(Arc::clone(&vm), vcpu_id as u64, machine_config.code_entry, &mut cpuid);
+        let vcpu = VCPU::new(
+            Arc::clone(&vm),
+            vcpu_id as u64,
+            machine_config.code_entry,
+            &mut cpuid,
+        );
 
         {
             use std::io::Write;

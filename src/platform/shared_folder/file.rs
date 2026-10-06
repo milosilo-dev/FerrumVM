@@ -1,7 +1,4 @@
-use crate::platform::shared_folder::{
-    fuse::header::FuseInHeader,
-    util::build_entry_out,
-};
+use crate::platform::shared_folder::{fuse::header::FuseInHeader, util::build_entry_out};
 
 use super::SharedFolder;
 

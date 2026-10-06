@@ -1,13 +1,14 @@
 use std::fs::File;
 
-use ferrumvm::{device_maps::io::IODevice, devices::serial::{Serial, SerialMode}};
+use ferrumvm::{
+    device_maps::io::IODevice,
+    devices::serial::{Serial, SerialMode},
+};
 
 fn logfile_serial() -> Serial {
     // Use a temp file so construction doesn't touch the terminal.
-    let path = std::env::temp_dir().join(format!(
-        "ferrumvm-serial-test-{}.log",
-        std::process::id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("ferrumvm-serial-test-{}.log", std::process::id()));
     Serial::new(SerialMode::LogFile(
         File::options()
             .create(true)

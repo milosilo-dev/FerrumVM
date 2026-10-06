@@ -190,4 +190,3 @@ impl IODevice for Cmos {
         }
     }
 }
-

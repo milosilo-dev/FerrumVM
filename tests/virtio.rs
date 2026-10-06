@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use ferrumvm::{
     devices::virtio::{
-        devices::{counter::CntVirtio, rng::RngVirtio, console::ConsoleVirtio},
+        devices::{console::ConsoleVirtio, counter::CntVirtio, rng::RngVirtio},
         virtio::{VirtioDevice, VirtioGuestMemoryHandle, VirtioQueue},
     },
     machine_config::memory_region::{GuestMemoryHandle, MemoryRegion},
@@ -42,7 +42,14 @@ fn new_queue() -> VirtioQueue {
     q
 }
 
-fn write_desc(vmem: &VirtioGuestMemoryHandle, index: u16, addr: u64, len: u32, flags: u16, next: u16) {
+fn write_desc(
+    vmem: &VirtioGuestMemoryHandle,
+    index: u16,
+    addr: u64,
+    len: u32,
+    flags: u16,
+    next: u16,
+) {
     let base = DESC_OFF + (index as u64) * 16;
     let mut h = vmem.clone();
     h.write_u32(base, addr as u32);
@@ -56,7 +63,9 @@ fn write_avail(harness: &mut TestHarness, idx: u16, heads: &[u16]) {
     // avail.flags @ AVAIL, avail.idx @ AVAIL+2, ring @ AVAIL+4
     harness.vmem.write_u16(AVAIL_OFF + 2, idx);
     for (i, head) in heads.iter().enumerate() {
-        harness.vmem.write_u16(AVAIL_OFF + 4 + (i as u64) * 2, *head);
+        harness
+            .vmem
+            .write_u16(AVAIL_OFF + 4 + (i as u64) * 2, *head);
     }
 }
 
@@ -88,7 +97,8 @@ fn pop_avail_wraps_around_ring() {
     let mut q = new_queue();
     q.last_avail_idx = QUEUE_SIZE - 1;
     // head at ring slot (QUEUE_SIZE-1)
-    h.vmem.write_u16(AVAIL_OFF + 4 + ((QUEUE_SIZE - 1) as u64) * 2, 0x77);
+    h.vmem
+        .write_u16(AVAIL_OFF + 4 + ((QUEUE_SIZE - 1) as u64) * 2, 0x77);
     write_avail(&mut h, QUEUE_SIZE, &[0x77]);
     assert_eq!(q.pop_avail(&h.vmem), Some(0x77));
 }
