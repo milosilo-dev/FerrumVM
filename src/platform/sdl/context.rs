@@ -7,6 +7,7 @@ use sdl2::{pixels::Color, video::Window, video::WindowContext};
 
 use crate::platform::display::DisplayBackend;
 use crate::platform::display::DisplayRect;
+use crate::platform::sdl::error::FerrumSDLContextError;
 
 pub struct FerrumSDLContext {
     canvas: Canvas<Window>,
@@ -19,7 +20,7 @@ pub struct FerrumSDLContext {
 unsafe impl Send for FerrumSDLContext {}
 
 impl FerrumSDLContext {
-    pub fn new(width: u32, height: u32) -> Result<Self, String> {
+    pub fn new(width: u32, height: u32) -> Result<Self, FerrumSDLContextError> {
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
 
@@ -31,7 +32,7 @@ impl FerrumSDLContext {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Could not create window: {:?}", e);
-                return Err(format!("Could not create window: {:?}", e));
+                return Err(FerrumSDLContextError::WindowInitError(format!("{:?}", e)));
             }
         };
 

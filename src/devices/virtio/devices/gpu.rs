@@ -11,21 +11,12 @@ use crate::platform::display::DisplayBackend;
 use crate::platform::display::DisplayRect;
 
 const MAX_SCANOUTS: usize = 16;
-
-/// Upper bound on how many command bytes we will read out of a single
-/// descriptor. The largest request struct is 52 bytes; anything larger is a
-/// malformed (or hostile) descriptor and reading it would let a guest ask for
-/// a multi-gigabyte allocation.
 const MAX_REQUEST_BYTES: usize = 4096;
 
-/// Largest 2D resource this device will allocate on the host.
 const MAX_RESOURCE_BYTES: usize = 256 * 1024 * 1024;
-/// Largest width or height of a 2D resource.
 const MAX_RESOURCE_DIMENSION: u32 = 16384;
-/// Most 2D resources that may exist at once.
 const MAX_RESOURCES: usize = 64;
 
-/// Every pixel format this device stores is 32 bits wide.
 const BYTES_PER_PIXEL: usize = 4;
 
 /// Query display capabilities
@@ -61,8 +52,6 @@ const VIRTIO_GPU_RESP_ERR_UNSUPPORTED: u32 = 0x1201;
 const VIRTIO_GPU_RESP_ERR_INVALID_ARGUMENT: u32 = 0x1202;
 const VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID: u32 = 0x1203;
 
-/// 32bpp pixel formats a guest may ask for. Anything else would be stored with
-/// the wrong stride, so it is rejected rather than silently garbled.
 const SUPPORTED_FORMATS: [u32; 4] = [
     1, // VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM
     2, // VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM
@@ -70,11 +59,6 @@ const SUPPORTED_FORMATS: [u32; 4] = [
     4, // VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM
 ];
 
-/// Writes a response header into a device-writable descriptor and returns how
-/// many bytes were written (0 if the descriptor cannot hold the response).
-///
-/// A free function rather than a method so it can be called while `self`
-/// (and one of its fields) is already mutably borrowed.
 fn write_response(guest_memory: &mut VirtioGuestMemoryHandle, desc: &VirtqDesc, typ: u32) -> usize {
     let buf = VirtioGpuCtrlHdr::new(typ).to_bytes();
     if (desc.flags & VIRTQ_DESC_F_WRITE) == 0 || buf.len() > desc.len as usize {
