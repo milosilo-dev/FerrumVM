@@ -3,13 +3,16 @@ pub trait DisplayBackend {
     fn resize_display(&mut self, width: u32, height: u32) -> bool;
     /// Get the size of this backend
     fn get_display_size(&self) -> (u32, u32);
-
     /// Upload changes to the framebuffer pixles
     fn upload(&mut self, framebuffer: &[u8], width: u32, height: u32, stride: u32);
     /// Draw to back buffer
     fn blit(&mut self, src: &[u8], src_stride: usize, src_rect: DisplayRect);
     /// Present the changes to the screen
     fn present(&mut self);
+    /// Processes pending events for the window, if it returns true, the VM should shutdown
+    fn pump_events(&mut self) -> bool {
+        false
+    }
 }
 
 #[repr(C, packed)]

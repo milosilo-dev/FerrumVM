@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::mem;
+use std::sync::{Arc, Mutex};
 
 use crate::devices::virtio::virtio::VIRTQ_DESC_F_NEXT;
 use crate::devices::virtio::virtio::VIRTQ_DESC_F_WRITE;
@@ -574,7 +575,7 @@ impl VirtioGpuScanout {
 pub struct VirtioGpu {
     guest_memory: Option<VirtioGuestMemoryHandle>,
     config: VirtioGpuConfig,
-    window: Box<dyn DisplayBackend + Send>,
+    window: Arc<Mutex<Box<dyn DisplayBackend + Send>>>,
     resources: HashMap<u32, GpuResource>,
     scanouts: [VirtioGpuScanout; MAX_SCANOUTS],
 }
@@ -582,7 +583,7 @@ pub struct VirtioGpu {
 impl VirtioGpu {
     /// Creates a new vitio GPU device which will provide
     /// the simplest form of video out for the guest
-    pub fn new(window: Box<dyn DisplayBackend + Send>) -> Self {
+    pub fn new(window: Arc<Mutex<Box<dyn DisplayBackend + Send>>>) -> Self {
         Self {
             guest_memory: None,
             config: VirtioGpuConfig::new(0, 1, 0).unwrap(),
@@ -647,8 +648,9 @@ impl VirtioDevice for VirtioGpu {
                     let response: GpuResponse = 'cmd: {
                         match header.typ {
                             VIRTIO_GPU_CMD_GET_DISPLAY_INFO => {
+                                let display = self.window.lock().unwrap();
                                 let displays =
-                                    vec![VirtioGpuDisplayInfo::new(self.window.as_ref())];
+                                    vec![VirtioGpuDisplayInfo::new(&**display)];
                                 GpuResponse::Raw(
                                     VirtioGpuDisplayInfoResponse::new(displays).to_bytes(),
                                 )
@@ -759,7 +761,7 @@ impl VirtioDevice for VirtioGpu {
                                 // just `req.rect`, the dirty region.
                                 for scanout in self.scanouts.iter() {
                                     if scanout.resource_id == Some(req.resource_id) {
-                                        self.window.blit(
+                                        self.window.lock().unwrap().blit(
                                             &resource.data,
                                             resource.stride,
                                             scanout.rect,

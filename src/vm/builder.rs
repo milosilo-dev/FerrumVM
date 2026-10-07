@@ -66,6 +66,7 @@ impl VirtualMachine {
             io_map: Arc::clone(&io_map),
             mmio_map: Arc::clone(&mmio_map),
             memory_regions: Arc::clone(&guest_memory),
+            display: None,
         };
 
         for mem in machine_config.memory_regions {

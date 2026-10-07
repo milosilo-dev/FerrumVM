@@ -161,7 +161,9 @@ impl GpuHarness {
             ..Default::default()
         }));
 
-        let mut dev = VirtioGpu::new(Box::new(Proxy(Arc::clone(&display))));
+        let backend: Arc<Mutex<Box<dyn DisplayBackend + Send>>> =
+            Arc::new(Mutex::new(Box::new(Proxy(Arc::clone(&display)))));
+        let mut dev = VirtioGpu::new(Arc::clone(&backend));
         dev.pass_guest_memory(vmem.clone());
 
         let mut queue = VirtioQueue::new();
@@ -920,7 +922,9 @@ fn tick_on_an_unknown_queue_is_a_no_op() {
 #[test]
 fn tick_without_guest_memory_is_a_no_op() {
     let display = Arc::new(Mutex::new(MockDisplay::default()));
-    let mut dev = VirtioGpu::new(Box::new(Proxy(display)));
+    let backend: Arc<Mutex<Box<dyn DisplayBackend + Send>>> =
+        Arc::new(Mutex::new(Box::new(Proxy(display))));
+    let mut dev = VirtioGpu::new(Arc::clone(&backend));
     let mut queue = VirtioQueue::new();
 
     // `pass_guest_memory` was never called.

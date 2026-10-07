@@ -1,6 +1,7 @@
 use crossterm::terminal::disable_raw_mode;
 use kvm_ioctls::VcpuExit;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::vm::vm::VirtualMachine;
 
@@ -139,6 +140,12 @@ impl VirtualMachine {
                 }
             });
         }
-        loop {}
+        loop {
+            if let Some(display) = &self.display && display.lock().unwrap().pump_events() {
+                eprintln!("Display window closed, shutting down\n");
+                std::process::exit(0);
+            }
+            std::thread::sleep(Duration::from_micros(100));
+        }
     }
 }

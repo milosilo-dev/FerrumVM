@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     os::fd::AsRawFd,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use ferrumvm::{
@@ -25,7 +25,8 @@ use ferrumvm::{
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
     platform::{
-        networking::tap::TAPDevice, sdl::context::FerrumSDLContext, shared_folder::SharedFolder,
+        display::DisplayBackend, networking::tap::TAPDevice, sdl::context::FerrumSDLContext,
+        shared_folder::SharedFolder,
     },
     vm::vm::VirtualMachine,
 };
@@ -49,6 +50,10 @@ fn main() {
     print!("\n\r");
     let firmware_log_file = File::create("ferrum-firmware.log").unwrap();
     let kernel_log_file = File::create("ferrum-kernel.log").unwrap();
+
+    let gpu_display: Arc<Mutex<Box<dyn DisplayBackend + Send>>> = Arc::new(Mutex::new(Box::new(
+        FerrumSDLContext::new(500, 500).unwrap(),
+    )));
 
     let com1 = Box::new(Serial::new(SerialMode::Terminal));
     let com2 = Box::new(Serial::new(SerialMode::LogFile(firmware_log_file)));
@@ -78,9 +83,7 @@ fn main() {
         7,
     ));
     let gpu = Box::new(MMIOTransport::new(
-        Box::new(VirtioGpu::new(Box::new(
-            FerrumSDLContext::new(500, 500).unwrap(),
-        ))),
+        Box::new(VirtioGpu::new(Arc::clone(&gpu_display))),
         2,
         10,
     ));
@@ -120,6 +123,7 @@ fn main() {
     machine_config.inject_memmap();
     machine_config.inject_acpi_tables();
 
-    let vm = VirtualMachine::new(machine_config);
+    let mut vm = VirtualMachine::new(machine_config);
+    vm.set_display(Arc::clone(&gpu_display));
     VirtualMachine::threaded_run(Arc::new(vm));
 }

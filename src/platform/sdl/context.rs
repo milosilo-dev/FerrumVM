@@ -1,9 +1,12 @@
 extern crate sdl2;
 
-use sdl2::pixels::PixelFormatEnum;
+use sdl2::event::Event;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture, TextureCreator};
-use sdl2::{pixels::Color, video::Window, video::WindowContext};
+use sdl2::video::Window;
+use sdl2::video::WindowContext;
+use sdl2::{EventPump, Sdl, VideoSubsystem};
 
 use crate::platform::display::DisplayBackend;
 use crate::platform::display::DisplayRect;
@@ -11,20 +14,25 @@ use crate::platform::sdl::error::FerrumSDLContextError;
 
 pub struct FerrumSDLContext {
     canvas: Canvas<Window>,
+    _sdl: Sdl,
+    _video: VideoSubsystem,
+    event_pump: EventPump,
     texture_creator: &'static TextureCreator<WindowContext>,
     texture: Texture<'static>,
     width: u32,
     height: u32,
+    should_quit: bool,
 }
 
 unsafe impl Send for FerrumSDLContext {}
 
 impl FerrumSDLContext {
     pub fn new(width: u32, height: u32) -> Result<Self, FerrumSDLContextError> {
-        let sdl_context = sdl2::init()?;
-        let video_subsystem = sdl_context.video()?;
+        let _sdl = sdl2::init()?;
+        let _video = _sdl.video()?;
+        let event_pump = _sdl.event_pump()?;
 
-        let window = match video_subsystem
+        let window = match _video
             .window("Ferrum VM", width, height)
             .position_centered()
             .build()
@@ -39,6 +47,7 @@ impl FerrumSDLContext {
         let mut canvas = window.into_canvas().build()?;
         canvas.set_draw_color(Color::RGB(255, 255, 255));
         canvas.clear();
+        canvas.present();
 
         let texture_creator: &'static TextureCreator<WindowContext> =
             Box::leak(Box::new(canvas.texture_creator()));
@@ -48,10 +57,14 @@ impl FerrumSDLContext {
 
         Ok(Self {
             canvas,
+            _sdl,
+            _video,
+            event_pump,
             texture_creator,
             texture,
             width,
             height,
+            should_quit: false,
         })
     }
 
@@ -148,5 +161,14 @@ impl DisplayBackend for FerrumSDLContext {
 
     fn present(&mut self) {
         self.canvas.present();
+    }
+
+    fn pump_events(&mut self) -> bool {
+        while let Some(event) = self.event_pump.poll_event() {
+            if let Event::Quit { .. } = event {
+                self.should_quit = true;
+            }
+        }
+        self.should_quit
     }
 }
