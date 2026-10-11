@@ -800,6 +800,77 @@ fn attach_backing_ignores_a_short_entry_list() {
 }
 
 #[test]
+fn attach_backing_reads_entries_from_a_chained_descriptor() {
+    // The real driver splits RESOURCE_ATTACH_BACKING: the command header goes
+    // in one device-readable descriptor and the memory entries in the next, so
+    // the device has to gather the whole readable prefix. Reading only the
+    // first descriptor leaves the backing empty and the framebuffer black.
+    const DESC_ENTRIES: u16 = 1;
+    const DESC_RESPONSE: u16 = 2;
+    const ENTRIES_OFF: u64 = REQ_OFF + HDR_LEN as u64 + 8;
+
+    let mut h = GpuHarness::new(64, 64);
+    assert_eq!(
+        h.submit(&create_2d(1, FORMAT_B8G8R8A8_UNORM, 4, 4)),
+        RESP_OK_NODATA
+    );
+
+    let mut header = hdr(CMD_RESOURCE_ATTACH_BACKING);
+    header.extend_from_slice(&1u32.to_le_bytes()); // resource_id
+    header.extend_from_slice(&1u32.to_le_bytes()); // nr_entries
+    h.vmem.write_guest_memory(REQ_OFF, &header);
+
+    let mut entry = Vec::new();
+    entry.extend_from_slice(&BACKING_OFF.to_le_bytes());
+    entry.extend_from_slice(&64u32.to_le_bytes()); // length
+    entry.extend_from_slice(&0u32.to_le_bytes()); // padding
+    h.vmem.write_guest_memory(ENTRIES_OFF, &entry);
+
+    h.vmem.write_guest_memory(RESP_OFF, &vec![0u8; RESP_MAX]);
+    h.write_desc(
+        DESC_REQ,
+        REQ_OFF,
+        header.len() as u32,
+        VIRTQ_DESC_F_NEXT,
+        DESC_ENTRIES,
+    );
+    h.write_desc(
+        DESC_ENTRIES,
+        ENTRIES_OFF,
+        entry.len() as u32,
+        VIRTQ_DESC_F_NEXT,
+        DESC_RESPONSE,
+    );
+    h.write_desc(
+        DESC_RESPONSE,
+        RESP_OFF,
+        RESP_MAX as u32,
+        VIRTQ_DESC_F_WRITE,
+        0,
+    );
+
+    assert!(h.notify(DESC_REQ));
+    assert_eq!(h.reply_type(), RESP_OK_NODATA);
+
+    // The backing has to have stuck, or the transfer below copies nothing.
+    h.vmem.write_guest_memory(BACKING_OFF, &[0x33; 64]);
+    assert_eq!(
+        h.submit(&transfer_to_host(DisplayRect::new(0, 0, 4, 4), 0, 1)),
+        RESP_OK_NODATA
+    );
+    assert_eq!(
+        h.submit(&set_scanout(DisplayRect::new(0, 0, 4, 4), 0, 1)),
+        RESP_OK_NODATA
+    );
+    h.submit(&flush(DisplayRect::new(0, 0, 4, 4), 1));
+
+    let blits = h.blits();
+    assert_eq!(blits.len(), 1);
+    assert_eq!(blits[0].pixels.len(), 4 * 4 * 4);
+    assert!(blits[0].pixels.iter().all(|&b| b == 0x33));
+}
+
+#[test]
 fn a_head_descriptor_without_next_is_still_retired() {
     let mut h = GpuHarness::new(64, 64);
 

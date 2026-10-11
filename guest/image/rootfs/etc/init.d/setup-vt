@@ -1,0 +1,13 @@
+#!/bin/sh
+# This kernel boots without devtmpfs, so the virtual terminal nodes never
+# show up on their own. Create them so the framebuffer console (shown through
+# the virtio-gpu display) has something to open: the getty on tty1 needs
+# /dev/tty1, and /dev/tty0 is the current-console alias people expect.
+# /etc/securetty already allows root on these terminals.
+n=0
+while [ "$n" -le 63 ]; do
+    [ -e "/dev/tty$n" ] || mknod "/dev/tty$n" c 4 "$n" 2>/dev/null
+    n=$((n + 1))
+done
+
+exit 0

@@ -12,7 +12,7 @@ use crate::platform::display::DisplayBackend;
 use crate::platform::display::DisplayRect;
 
 const MAX_SCANOUTS: usize = 16;
-const MAX_REQUEST_BYTES: usize = 4096;
+const MAX_REQUEST_BYTES: usize = 256 * 1024;
 
 const MAX_RESOURCE_BYTES: usize = 256 * 1024 * 1024;
 const MAX_RESOURCE_DIMENSION: u32 = 16384;
@@ -68,6 +68,43 @@ fn write_response(guest_memory: &mut VirtioGuestMemoryHandle, desc: &VirtqDesc, 
 
     guest_memory.write_guest_memory(desc.addr, buf.as_slice());
     buf.len()
+}
+
+fn gather_control_request(
+    queue: &VirtioQueue,
+    guest_memory: &mut VirtioGuestMemoryHandle,
+    head: u16,
+) -> Option<(Vec<u8>, VirtqDesc)> {
+    let mut request = Vec::new();
+    let mut index = head;
+
+    for _ in 0..queue.size {
+        let desc = queue.get_descriptor(guest_memory, index);
+
+        if (desc.flags & VIRTQ_DESC_F_WRITE) != 0 {
+            // The response must be preceded by at least one readable
+            // descriptor holding the command header.
+            if request.is_empty() {
+                return None;
+            }
+            return Some((request, desc));
+        }
+
+        if request.len().saturating_add(desc.len as usize) > MAX_REQUEST_BYTES {
+            return None;
+        }
+
+        let chunk = guest_memory.read_guest_memory_alloc(desc.addr, desc.len as usize);
+        request.extend_from_slice(&chunk);
+
+        if (desc.flags & VIRTQ_DESC_F_NEXT) == 0 || desc.next as usize >= queue.size as usize {
+            return None;
+        }
+
+        index = desc.next;
+    }
+
+    None
 }
 
 #[repr(C, packed)]
@@ -619,38 +656,28 @@ impl VirtioDevice for VirtioGpu {
                 while let Some(head) = queue.pop_avail(guest_memory) {
                     did_work = true;
 
-                    let header_desc = queue.get_descriptor(guest_memory, head);
-
-                    // The head has to be device-readable, has to chain to a
-                    // valid response descriptor, and its length is guest
-                    // controlled. Retire anything malformed rather than
+                    // The head has to be device-readable and the chain has to
+                    // end in a writable response descriptor. Its length is
+                    // guest controlled. Retire anything malformed rather than
                     // `continue`ing, or the avail and used rings drift apart
                     // and the driver hangs.
-                    if (header_desc.flags & VIRTQ_DESC_F_NEXT) == 0
-                        || (header_desc.flags & VIRTQ_DESC_F_WRITE) != 0
-                        || header_desc.next as usize >= queue.size as usize
-                        || header_desc.len as usize > MAX_REQUEST_BYTES
-                    {
+                    let Some((header_bytes, gpu_cmd_desc)) =
+                        gather_control_request(queue, guest_memory, head)
+                    else {
                         queue.push_used(guest_memory, head, 0);
                         continue;
-                    }
-
-                    let header_bytes = guest_memory
-                        .read_guest_memory_alloc(header_desc.addr, header_desc.len as usize);
+                    };
 
                     let Some(header) = VirtioGpuCtrlHdr::from_bytes(&header_bytes) else {
                         queue.push_used(guest_memory, head, 0);
                         continue;
                     };
 
-                    let gpu_cmd_desc = queue.get_descriptor(guest_memory, header_desc.next); // Response descriptor
-
                     let response: GpuResponse = 'cmd: {
                         match header.typ {
                             VIRTIO_GPU_CMD_GET_DISPLAY_INFO => {
                                 let display = self.window.lock().unwrap();
-                                let displays =
-                                    vec![VirtioGpuDisplayInfo::new(&**display)];
+                                let displays = vec![VirtioGpuDisplayInfo::new(&**display)];
                                 GpuResponse::Raw(
                                     VirtioGpuDisplayInfoResponse::new(displays).to_bytes(),
                                 )

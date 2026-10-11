@@ -1,0 +1,13 @@
+#!/bin/sh
+# Render something to /dev/fb0 so the virtio-gpu display is provably working,
+# even before the tty1 getty paints its prompt over the top rows. The drm
+# fbdev emulation is up long before rcS runs, and it dirty-flushes the region
+# to the virtio-gpu, whose host side scroll-blinks the SDL window.
+#
+# Only the lower part of the screen is filled, so console text (kernel
+# messages via console=tty1, then the login prompt) is not covered.
+if [ -c /dev/fb0 ]; then
+    dd if=/dev/urandom of=/dev/fb0 bs=4096 skip=70 seek=70 count=172 2>/dev/null
+fi
+
+exit 0

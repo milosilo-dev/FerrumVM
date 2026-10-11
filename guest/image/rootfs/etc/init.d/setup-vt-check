@@ -1,0 +1,20 @@
+#!/bin/sh
+# Report the framebuffer/login state to the serial console (ttyS0), which the
+# FerrumVM terminal mirrors. This exists to distinguish "getty never spawned,
+# /dev/tty1 missing" from "getty spawned but its output does not reach the
+# framebuffer", without needing to look at the display.
+{
+    echo "===== fb diagnostics ====="
+    for d in /dev/fb0 /dev/tty0 /dev/tty1 /dev/ttyS0; do
+        if [ -c "$d" ]; then
+            echo "$d: present"
+        else
+            echo "$d: MISSING"
+        fi
+    done
+    echo "-- gettys --"
+    ps | grep -E '[g]etty' || echo "(no getty processes)"
+    echo "=========================="
+} >/dev/ttyS0 2>&1
+
+exit 0

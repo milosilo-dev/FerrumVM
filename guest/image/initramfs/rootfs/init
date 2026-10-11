@@ -1,10 +1,25 @@
 #!/bin/sh
 
+# The kernel boots without devtmpfs, so virtual terminal nodes only exist if
+# we create them. The framebuffer console (rendered by fbcon through the
+# virtio-gpu display) and the getty on tty1 both need /dev/tty0 and /dev/tty1,
+# and console=tty1 wants them from the moment it registers.
+mk_vts() {
+    dir=$1
+    n=0
+    while [ "$n" -le 15 ]; do
+        [ -e "$dir/tty$n" ] || mknod "$dir/tty$n" c 4 "$n" 2>/dev/null
+        n=$((n + 1))
+    done
+}
+
 mkdir -p /newroot
 
 mount -t proc proc /proc 2>/dev/null
 mount -t sysfs sysfs /sys 2>/dev/null
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
+
+mk_vts /dev
 
 while [ ! -b /dev/vda2 ]; do
     echo "waiting for disk..."
@@ -15,6 +30,10 @@ mount -t ext4 /dev/vda2 /newroot
 mount -t proc proc /newroot/proc
 mount -t sysfs sysfs /newroot/sys
 mount -t devtmpfs devtmpfs /newroot/dev
+
+# switch_root will hand this /dev to the running system, so repeat there: the
+# root filesystem's static /dev only ships console, fb0, tty and the serials.
+mk_vts /newroot/dev
 
 mkdir -p /newroot/dev/pts
 mount -t devpts devpts /newroot/dev/pts
