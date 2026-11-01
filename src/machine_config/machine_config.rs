@@ -8,6 +8,7 @@ use crate::{
         binary::Binary,
         mem_map::{MemMap, MemMapHeader, MemType},
     },
+    pci::bus::PCIBus,
 };
 
 pub struct MemoryRegionConfig {
@@ -20,6 +21,7 @@ pub struct MachineConfig {
     pub binaries: Vec<Binary>,
     pub io_devices: Vec<IODeviceRegion>,
     pub mmio_devices: Vec<MMIODeviceRegion>,
+    pub pci_bus: PCIBus,
     pub irq_map: Vec<IrqMap>,
 
     pub code_entry: usize,

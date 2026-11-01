@@ -16,7 +16,7 @@ use ferrumvm::{
                 blk::BlkVirtio, counter::CntVirtio, fs::FsVirtio, gpu::VirtioGpu, net::NetVirtio,
                 rng::RngVirtio,
             },
-            transports::mmio::MMIOTransport,
+            transports::{mmio::MMIOTransport, pci::PCITransport},
         },
     },
     irq::map::IrqMap,
@@ -24,6 +24,7 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
+    pci::bus::PCIBus,
     platform::{
         display::DisplayBackend, networking::tap::TAPDevice, sdl::context::FerrumSDLContext,
         shared_folder::SharedFolder,
@@ -87,9 +88,13 @@ fn main() {
         2,
         10,
     ));
+    let pci_rng = Box::new(PCITransport::new(Box::new(RngVirtio::new()), 1, 0));
 
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
+
+    let mut pci_bus = PCIBus::new();
+    pci_bus.register(pci_rng);
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
@@ -116,6 +121,7 @@ fn main() {
             MMIODeviceRegion::new(0x400004000..=0x400004FFF, fuse),
             MMIODeviceRegion::new(0x400005000..=0x400005FFF, gpu),
         ],
+        pci_bus,
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
         total_vcpus: 8,
