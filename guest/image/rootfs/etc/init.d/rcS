@@ -31,7 +31,7 @@ for script in /etc/init.d/setup-*; do
     fi
 done
 
-if [ -x /etc/network/setup.sh ]; then
+if [ -f /etc/network/setup.sh ]; then
     echo "init: bringing up the network"
     if ! /bin/sh /etc/network/setup.sh; then
         echo "init: network setup failed" >&2
