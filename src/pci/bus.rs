@@ -12,4 +12,12 @@ impl PCIBus {
     pub fn register(&mut self, device: Box<dyn PCIDevice>) {
         self.devices.push(device);
     }
+
+    pub fn read_config(&self, device: u8, function: u8, dword: u8) -> Option<u8> {
+        if let Some(device) = self.devices.get(device as usize) {
+            Some(device.read_config(&function, &dword))
+        } else {
+            None
+        }
+    }
 }

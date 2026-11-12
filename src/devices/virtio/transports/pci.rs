@@ -8,4 +8,8 @@ impl PCITransport {
     }
 }
 
-impl PCIDevice for PCITransport {}
+impl PCIDevice for PCITransport {
+    fn read_config(&self, function: &u8, dword: &u8) -> u8 {
+        0
+    }
+}
