@@ -24,7 +24,7 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
-    pci::bus::PCIBus,
+    pci::{bus::PCIBus, config_space::PciConfigSpace},
     platform::{
         display::DisplayBackend, networking::tap::TAPDevice, sdl::context::FerrumSDLContext,
         shared_folder::SharedFolder,
@@ -95,6 +95,8 @@ fn main() {
 
     let mut pci_bus = PCIBus::new();
     pci_bus.register(pci_rng);
+    let pci_buses = Arc::new(Mutex::new(vec![pci_bus]));
+    let pci_config_space = PciConfigSpace::new(pci_buses);
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
@@ -121,7 +123,7 @@ fn main() {
             MMIODeviceRegion::new(0x400004000..=0x400004FFF, fuse),
             MMIODeviceRegion::new(0x400005000..=0x400005FFF, gpu),
         ],
-        pci_bus,
+        pci_config_space,
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
         total_vcpus: 8,

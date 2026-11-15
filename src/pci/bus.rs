@@ -13,11 +13,24 @@ impl PCIBus {
         self.devices.push(device);
     }
 
-    pub fn read_config(&self, device: u8, function: u8, dword: u8) -> Option<u8> {
+    pub fn read_config(&self, device: u8, function: u8, dword: u8, dword_select: u8) -> Option<u8> {
         if let Some(device) = self.devices.get(device as usize) {
-            Some(device.read_config(&function, &dword))
+            device.read_config(&function, &dword, &dword_select)
         } else {
-            None
+            Some(0xFF)
+        }
+    }
+
+    pub fn write_config(
+        &mut self,
+        device: u8,
+        function: u8,
+        dword: u8,
+        dword_select: u8,
+        byte: u8,
+    ) {
+        if let Some(device) = self.devices.get_mut(device as usize) {
+            device.write_config(&function, &dword, &dword_select, byte);
         }
     }
 }
