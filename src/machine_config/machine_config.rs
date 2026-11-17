@@ -8,7 +8,6 @@ use crate::{
         binary::Binary,
         mem_map::{MemMap, MemMapHeader, MemType},
     },
-    pci::config_space::PciConfigSpace,
 };
 
 pub struct MemoryRegionConfig {
@@ -21,7 +20,6 @@ pub struct MachineConfig {
     pub binaries: Vec<Binary>,
     pub io_devices: Vec<IODeviceRegion>,
     pub mmio_devices: Vec<MMIODeviceRegion>,
-    pub pci_config_space: PciConfigSpace,
     pub irq_map: Vec<IrqMap>,
 
     pub code_entry: usize,
@@ -32,17 +30,9 @@ impl MachineConfig {
     pub fn inject_memmap(&mut self) {
         let ram_end = self.memory_regions[0].mem_size as u64 - self.memory_regions[0].mem_offset;
 
-        // The in-kernel KVM irqchip owns these ranges (no user RAM slot backs them), so
-        // they must be excluded from usable RAM. Reserve the whole span from the IOAPIC
-        // through the LAPIC as ONE hole so the memory map stays small (Limine's internal
-        // memory-map array overflows - "Memory map exhausted." - if given too many /
-        // over-fragmented entries).
         const APIC_RESERVED_START: u64 = 0xFEC0_0000;
         const APIC_RESERVED_END: u64 = 0xFEE0_1000;
 
-        // Keep the map minimal but non-overlapping: low memory below the first RAM region
-        // is described as a few fixed regions, then a single conventional region spans all
-        // the way up to the end of guest RAM, with the APIC span carved out as reserved.
         let mut mem_map: Vec<MemMap> = vec![
             // Real mode IVT + BDA - keep reserved
             MemMap {

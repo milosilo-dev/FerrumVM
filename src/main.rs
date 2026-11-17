@@ -1,5 +1,6 @@
 use std::{
     fs::{self, File},
+    ops::RangeInclusive,
     os::fd::AsRawFd,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -24,13 +25,15 @@ use ferrumvm::{
         binary::Binary,
         machine_config::{MachineConfig, MemoryRegionConfig},
     },
-    pci::{bus::PCIBus, config_space::PciConfigSpace},
+    pci::{bus::PCIBus, config_space::PciConfigSpace, mmio_window::PCIMMIOWindow},
     platform::{
         display::DisplayBackend, networking::tap::TAPDevice, sdl::context::FerrumSDLContext,
         shared_folder::SharedFolder,
     },
     vm::vm::VirtualMachine,
 };
+
+const PCI_WINDOW: RangeInclusive<u64> = 0x400010000..=0x4000FFFFF;
 
 fn main() {
     {
@@ -96,7 +99,8 @@ fn main() {
     let mut pci_bus = PCIBus::new();
     pci_bus.register(pci_rng);
     let pci_buses = Arc::new(Mutex::new(vec![pci_bus]));
-    let pci_config_space = PciConfigSpace::new(pci_buses);
+    let pci_config_space = Box::new(PciConfigSpace::new(pci_buses.clone()));
+    let pci_mmio_window = Box::new(PCIMMIOWindow::new(pci_buses.clone(), PCI_WINDOW));
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
@@ -114,6 +118,7 @@ fn main() {
             IODeviceRegion::new(0x2f8..=0x2ff, com2),
             IODeviceRegion::new(0x3E8..=0x3EF, com3),
             IODeviceRegion::new(0x70..=0x71, cmos),
+            IODeviceRegion::new(0xCF8..=0xCFF, pci_config_space),
         ],
         mmio_devices: vec![
             MMIODeviceRegion::new(0x400000000..=0x400000FFF, rng),
@@ -122,8 +127,8 @@ fn main() {
             MMIODeviceRegion::new(0x400003000..=0x400003FFF, net),
             MMIODeviceRegion::new(0x400004000..=0x400004FFF, fuse),
             MMIODeviceRegion::new(0x400005000..=0x400005FFF, gpu),
+            MMIODeviceRegion::new(PCI_WINDOW, pci_mmio_window),
         ],
-        pci_config_space,
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
         total_vcpus: 8,

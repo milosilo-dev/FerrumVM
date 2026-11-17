@@ -1,4 +1,6 @@
-use crate::{devices::virtio::virtio::VirtioDevice, pci::device::PCIDevice};
+use crate::{
+    device_maps::mmio::MMIODevice, devices::virtio::virtio::VirtioDevice, pci::device::PCIDevice,
+};
 
 pub struct PCITransport {}
 
@@ -14,4 +16,12 @@ impl PCIDevice for PCITransport {
     }
 
     fn write_config(&mut self, function: &u8, dword: &u8, dword_offset: &u8, data: u8) {}
+}
+
+impl MMIODevice for PCITransport {
+    fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
+        vec![]
+    }
+
+    fn write(&mut self, addr: u64, data: &[u8]) {}
 }

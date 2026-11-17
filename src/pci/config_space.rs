@@ -2,98 +2,110 @@ use crate::{device_maps::io::IODevice, pci::bus::PCIBus};
 
 use std::sync::{Arc, Mutex};
 
-/// pci config io device, map at 0xCF8 - 0xCFC, only the first and last port are used howverer
 pub struct PciConfigSpace {
-    selector_enabled: bool,
-    current_bus: u8,
-    current_device: u8,
-    current_function: u8,
-    current_dword: u8,
-
+    selector: u32,
     buses: Arc<Mutex<Vec<PCIBus>>>,
 }
 
 impl PciConfigSpace {
     pub fn new(buses: Arc<Mutex<Vec<PCIBus>>>) -> Self {
         Self {
-            selector_enabled: false,
-            current_bus: 0,
-            current_device: 0,
-            current_function: 0,
-            current_dword: 0,
-
-            buses,
+            selector: 0,
+            buses: buses,
         }
+    }
+
+    fn selector_enabled(&self) -> bool {
+        self.selector & (1 << 31) != 0
+    }
+
+    fn current_bus(&self) -> u8 {
+        (self.selector >> 16) as u8
+    }
+
+    fn current_device(&self) -> u8 {
+        ((self.selector >> 11) & 0x1F) as u8
+    }
+
+    fn current_function(&self) -> u8 {
+        ((self.selector >> 8) & 0x07) as u8
+    }
+
+    fn current_dword(&self) -> u8 {
+        ((self.selector >> 2) & 0x3F) as u8
+    }
+
+    fn read_config_byte(&self, dword_offset: u8) -> u8 {
+        if !self.selector_enabled() {
+            return 0xFF;
+        }
+
+        let Ok(buses) = self.buses.lock() else {
+            return 0xFF;
+        };
+        let Some(bus) = buses.get(self.current_bus() as usize) else {
+            return 0xFF;
+        };
+
+        bus.read_config(
+            self.current_device(),
+            self.current_function(),
+            self.current_dword(),
+            dword_offset,
+        )
+        .unwrap_or(0xFF)
+    }
+
+    fn write_config_byte(&self, dword_offset: u8, byte: u8) {
+        if !self.selector_enabled() {
+            return;
+        }
+
+        let Ok(mut buses) = self.buses.lock() else {
+            return;
+        };
+        let Some(bus) = buses.get_mut(self.current_bus() as usize) else {
+            return;
+        };
+
+        bus.write_config(
+            self.current_device(),
+            self.current_function(),
+            self.current_dword(),
+            dword_offset,
+            byte,
+        );
     }
 }
 
 impl IODevice for PciConfigSpace {
     fn input(&mut self, port: u16, length: usize) -> Vec<u8> {
-        let mut ret: Vec<u8> = vec![];
-        for _ in 0..length {
-            match port {
-                0x04..=0x07 => {
-                    // read a dword from the selected functions config space
-                    let dword_offset: u8 = (port - 0x04) as u8;
-                    if let Some(bus) = self.buses.lock().unwrap().get(self.current_bus as usize) {
-                        let Some(byte): Option<u8> = bus
-                            .read_config(
-                                self.current_device,
-                                self.current_function,
-                                self.current_dword,
-                                dword_offset,
-                            )
-                            .or(Some(0xFF))
-                        else {
-                            panic!("unrechable")
-                        };
-
-                        ret.push(byte);
-                    } else {
-                        panic!("Bad Pci config read!")
-                    };
+        (0..length)
+            .map(|i| {
+                let offset = port.wrapping_add(i as u16);
+                match offset {
+                    // CONFIG_ADDRESS itself is always readable.
+                    0x00..=0x03 => (self.selector >> (8 * offset as u32)) as u8,
+                    // CONFIG_DATA, one byte per port.
+                    0x04..=0x07 => self.read_config_byte((offset - 0x04) as u8),
+                    // Unused bytes of the port range.
+                    _ => 0xFF,
                 }
-                _ => {}
-            }
-        }
-        ret
+            })
+            .collect()
     }
 
     fn output(&mut self, port: u16, data: &[u8]) {
-        match port {
-            0x00 => {
-                if data.len() < 4 {
-                    return;
+        for (i, byte) in data.iter().enumerate() {
+            let offset = port.wrapping_add(i as u16);
+            match offset {
+                0x00..=0x03 => {
+                    let shift = 8 * offset as u32;
+                    self.selector =
+                        (self.selector & !(0xFFu32 << shift)) | ((*byte as u32) << shift);
                 }
-                let data_full: u32 = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-                self.current_dword = ((data_full >> 2) & 0x3F) as u8;
-                self.current_function = ((data_full >> 8) & 0b111) as u8;
-                self.current_device = ((data_full >> 11) & 0x1F) as u8;
-                self.current_bus = ((data_full >> 16) & 0xFF) as u8;
-                self.selector_enabled = ((data_full >> 31) & 0x1) != 0;
-            }
-            0x04..=0x07 => {
-                // write a dword from the selected functions config space
-                for byte in data {
-                    let dword_offset = (port - 0x04) as u8;
-                    if let Some(bus) = self
-                        .buses
-                        .lock()
-                        .unwrap()
-                        .get_mut(self.current_bus as usize)
-                    {
-                        bus.write_config(
-                            self.current_device,
-                            self.current_function,
-                            self.current_dword,
-                            dword_offset,
-                            *byte,
-                        );
-                    }
-                }
-            }
-            _ => {
-                // Nothing
+                0x04..=0x07 => self.write_config_byte((offset - 0x04) as u8, *byte),
+                _ => {}
             }
         }
     }

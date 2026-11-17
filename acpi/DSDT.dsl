@@ -2,18 +2,18 @@
  * Intel ACPI Component Architecture
  * AML/ASL+ Disassembler version 20251212 (64-bit version)
  * Copyright (c) 2000 - 2025 Intel Corporation
- *
+ * 
  * Disassembling to symbolic ASL+ operators
  *
  * Disassembly of acpi/DSDT.aml
  *
  * Original Table Header:
  *     Signature        "DSDT"
- *     Length           0x0000012D (301)
+ *     Length           0x0000016F (367)
  *     Revision         0x02
- *     Checksum         0x98
+ *     Checksum         0xF9
  *     OEM ID           "FERRUM"
- *     OEM Table ID     "VM_DSDT"
+ *     OEM Table ID     "FVM_DSDT"
  *     OEM Revision     0x00001000 (4096)
  *     Compiler ID      "INTL"
  *     Compiler Version 0x20251212 (539300370)
@@ -37,19 +37,13 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "FVM_DSDT", 0x00001000)
             {
                 Return (ResourceTemplate ()
                 {
-                    QWordMemory (
-                        ResourceConsumer,   // resource usage
-                        PosDecode,           // decode
-                        MinFixed,            // is min fixed
-                        MaxFixed,            // is max fixed
-                        Cacheable,           // cacheable
-                        ReadWrite,           // read/write
-                        0x0000000000000000,  // granularity
-                        0x0000000400000000,  // range minimum
-                        0x000000040000FFFF,  // range maximum
-                        0x0000000000000000,  // translation
-                        0x0000000000010000,  // range length
-                        )
+                    QWordMemory (ResourceConsumer, PosDecode, MinFixed, MaxFixed, Cacheable, ReadWrite,
+                        0x0000000000000000, // Granularity
+                        0x0000000400000000, // Range Minimum
+                        0x000000040000FFFF, // Range Maximum
+                        0x0000000000000000, // Translation Offset
+                        0x0000000000010000, // Length
+                        ,, , AddressRangeMemory, TypeStatic)
                 })
             }
 
@@ -115,3 +109,4 @@ DefinitionBlock ("", "DSDT", 2, "FERRUM", "FVM_DSDT", 0x00001000)
         }
     }
 }
+
