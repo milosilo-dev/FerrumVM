@@ -96,11 +96,10 @@ fn main() {
     let firmware = fs::read("guest/firmware/build/out.bin").unwrap();
     let firmware64 = fs::read("guest/firmware/build/main64.bin").unwrap();
 
-    let mut pci_bus = PCIBus::new();
-    pci_bus.register(pci_rng);
-    let pci_buses = Arc::new(Mutex::new(vec![pci_bus]));
-    let pci_config_space = Box::new(PciConfigSpace::new(pci_buses.clone()));
-    let pci_mmio_window = Box::new(PCIMMIOWindow::new(pci_buses.clone(), PCI_WINDOW));
+    let pci_bus = Arc::new(Mutex::new(PCIBus::new()));
+    pci_bus.lock().unwrap().register(pci_rng);
+    let pci_config_space = Box::new(PciConfigSpace::new(pci_bus.clone()));
+    let pci_mmio_window = Box::new(PCIMMIOWindow::new(pci_bus.clone(), PCI_WINDOW));
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {

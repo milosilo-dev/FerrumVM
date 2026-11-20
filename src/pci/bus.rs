@@ -33,4 +33,27 @@ impl PCIBus {
             device.write_config(&function, &dword, &dword_select, byte);
         }
     }
+
+    pub fn write_mmio(&mut self, addr: u64, byte: u8) {
+        for i in 0..self.devices.len() {
+            if let Some(device) = self.devices.get_mut(i) {
+                let range = device.get_mmio_range();
+                if range.contains(&addr) {
+                    device.mmio_write(addr - range.start(), byte);
+                }
+            }
+        }
+    }
+
+    pub fn read_mmmio(&self, addr: u64) -> Option<u8> {
+        for i in 0..self.devices.len() {
+            if let Some(device) = self.devices.get(i) {
+                let range = device.get_mmio_range();
+                if range.contains(&addr) {
+                    return Some(device.mmio_read(addr - range.start())?);
+                }
+            }
+        }
+        return None;
+    }
 }

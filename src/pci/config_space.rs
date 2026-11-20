@@ -4,23 +4,16 @@ use std::sync::{Arc, Mutex};
 
 pub struct PciConfigSpace {
     selector: u32,
-    buses: Arc<Mutex<Vec<PCIBus>>>,
+    bus: Arc<Mutex<PCIBus>>,
 }
 
 impl PciConfigSpace {
-    pub fn new(buses: Arc<Mutex<Vec<PCIBus>>>) -> Self {
-        Self {
-            selector: 0,
-            buses: buses,
-        }
+    pub fn new(bus: Arc<Mutex<PCIBus>>) -> Self {
+        Self { selector: 0, bus }
     }
 
     fn selector_enabled(&self) -> bool {
         self.selector & (1 << 31) != 0
-    }
-
-    fn current_bus(&self) -> u8 {
-        (self.selector >> 16) as u8
     }
 
     fn current_device(&self) -> u8 {
@@ -40,10 +33,7 @@ impl PciConfigSpace {
             return 0xFF;
         }
 
-        let Ok(buses) = self.buses.lock() else {
-            return 0xFF;
-        };
-        let Some(bus) = buses.get(self.current_bus() as usize) else {
+        let Ok(bus) = self.bus.lock() else {
             return 0xFF;
         };
 
@@ -61,10 +51,7 @@ impl PciConfigSpace {
             return;
         }
 
-        let Ok(mut buses) = self.buses.lock() else {
-            return;
-        };
-        let Some(bus) = buses.get_mut(self.current_bus() as usize) else {
+        let Ok(mut bus) = self.bus.lock() else {
             return;
         };
 
